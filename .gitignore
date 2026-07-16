@@ -1,3 +1,11 @@
+_competition/
+.vercel/
+.DS_Store
+AGENTS.md
+IMPLEMENTATION_PLAN.md
+PROJECT_BRIEF.md
+supabase/README.md
+ai/README.md
 .env
 .env.*
 !.env.example
@@ -8,3 +16,4 @@ test-results/
 __pycache__/
 .pytest_cache/
 .venv/
+*.pyc
