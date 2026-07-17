@@ -149,7 +149,7 @@ export default function Workspace() {
           <span className="brand-mark"><RouteIcon size={17} /></span>
           <div>
             <strong>{context?.study_area.properties.name || "Bandung Corridor Study"}</strong>
-            <span>Bandung Timur · Evaluasi aksesibilitas rute</span>
+            <span>Bandung Timur · Evaluasi aksesibilitas rute angkutan umum</span>
           </div>
           <div className="scenario-tabs">
             <button className="scenario-tab active">Scenario A</button>
@@ -181,10 +181,8 @@ export default function Workspace() {
           <p className="panel-kicker">TOOLS</p>
           <div className="tool-stack">
             <div className="tool-row">
-              <button className="tool-btn shortcut">V</button>
-              <button className="tool-btn">Select</button>
-              <button className="tool-btn shortcut">E</button>
-              <button className="tool-btn">Edit Route</button>
+              <button className="tool-btn">Select (V)</button>
+              <button className="tool-btn">Edit Route (E)</button>
             </div>
             <div className="tool-row">
               <button className="tool-btn"><Undo2 size={14} /> Undo</button>
@@ -291,6 +289,7 @@ export default function Workspace() {
               <div>
                 <p className="panel-kicker">ACCESSIBILITY SCORE</p>
                 <h2>Panel Hasil</h2>
+                <p style={{ margin: "2px 0 0", color: "var(--muted)", fontSize: "9px" }}>Mock Spatial Analysis</p>
               </div>
               <span className="score-status"><i /> {scoreLabel(analysis.baseline.score)}</span>
             </div>

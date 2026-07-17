@@ -2,22 +2,11 @@ import Link from "next/link";
 import {
   ArrowRight,
   Check,
-  ChevronRight,
   Database,
-  Pencil,
-  Layers3,
   Map,
   Route,
-  ScanSearch,
   Sparkles,
 } from "lucide-react";
-
-const steps = [
-  { icon: Layers3, title: "Pilih Layer", text: "Aktifkan rute existing, populasi, Property GO, dan fasilitas publik." },
-  { icon: Pencil, title: "Gambar Rute", text: "Buat rute simulasi titik demi titik langsung di peta MAPID." },
-  { icon: ScanSearch, title: "Hitung Spasial", text: "Buffer 500 m, overlay data, cari 16 alternatif alignment." },
-  { icon: ChevronRight, title: "Bandingkan Hasil", text: "Skor komposit, breakdown metrik, insight AI, rekomendasi." },
-];
 
 export default function LandingPage() {
   return (
@@ -39,10 +28,11 @@ export default function LandingPage() {
       <section className="hero">
         <div className="hero-copy">
           <span className="eyebrow"><span /> Alat evaluasi WebGIS untuk perencana kota</span>
-          <h1>Evaluator Aksesibilitas Transit</h1>
+          <h1>Evaluator Aksesibilitas</h1>
+          <h1 style={{ marginTop: "-0.12em" }}>Transit</h1>
           <p>
             Evaluasi ide rute transportasi publik dengan konteks spasial, metrik yang jelas,
-            dan rekomendasi perencanaan berbasis AI menggunakan data MAPID.
+            dan rekomendasi perencanaan berbasis AI menggunakan data MAPID tiruan.
           </p>
           <div className="hero-actions">
             <Link href="/workspace" className="button button-primary">
@@ -89,65 +79,48 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="manifesto" aria-label="Prinsip produk">
-        <p className="section-index">01 / TUJUAN</p>
-        <h2>Keputusan transit yang dapat ditelusuri, bukan angka dari kotak hitam.</h2>
-        <p>Semua angka dihitung di PostGIS. AI hanya mengubah hasil yang sudah terverifikasi menjadi bahasa perencanaan yang ringkas.</p>
-      </section>
-
       <section id="cara-kerja" className="section process-section">
         <div className="section-heading">
           <div>
-            <p className="section-index">02 / CARA KERJA</p>
+            <p className="section-index">01 / CARA KERJA</p>
             <h2>Dari layer peta sampai rekomendasi rute.</h2>
           </div>
           <p>Pilih data, gambar rute, hitung dampak spasial, lalu bandingkan hasilnya.</p>
         </div>
         <div className="process-grid">
-          {steps.map(({ icon: Icon, title, text }, index) => (
-            <article className="process-card" key={title}>
-              <div className="process-top">
-                <span className="process-num">0{index + 1}</span>
-                <Icon size={23} />
-              </div>
-              <h3>{title}</h3>
-              <p>{text}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="workspace-preview">
-        <div className="preview-copy">
-          <p className="section-index light">03 / WORKSPACE</p>
-          <h2>Peta tetap menjadi pusat pembicaraan.</h2>
-          <p>Layer, alat gambar, hasil, dan rekomendasi hidup dalam satu ruang kerja. Tidak ada perpindahan halaman saat menilai ulang rute.</p>
-          <ul>
-            <li><Check size={16} /> Gambar dan edit GeoJSON LineString</li>
-            <li><Check size={16} /> Lihat baseline dan alternatif bersamaan</li>
-            <li><Check size={16} /> Terapkan rekomendasi lalu evaluasi ulang</li>
-          </ul>
-          <Link href="/workspace" className="button button-light">Masuk ke peta <ArrowRight size={18} /></Link>
-        </div>
-        <div className="preview-shell" aria-hidden="true">
-          <div className="preview-bar"><span /><span /><span /></div>
-          <div className="preview-body">
-            <div className="preview-panel">
-              <i /><i /><i /><i />
+          <article className="process-card">
+            <div className="process-top">
+              <span className="process-num">01</span>
             </div>
-            <div className="preview-map-grid">
-              <svg viewBox="0 0 520 360">
-                <path d="M-10 310 C130 250 180 100 310 170 S420 170 540 30" fill="none" stroke="#2563eb" strokeWidth="7" />
-                <path d="M15 335 C150 260 190 130 310 195 S440 190 550 60" fill="none" stroke="#14b8a6" strokeDasharray="10 10" strokeWidth="5" />
-              </svg>
+            <h3>Pilih Layer</h3>
+            <p>Aktifkan rute existing, populasi, Property GO.</p>
+          </article>
+          <article className="process-card">
+            <div className="process-top">
+              <span className="process-num">02</span>
             </div>
-            <div className="preview-result"><b>Skor rute</b><strong>-</strong><i /><i /><i /></div>
-          </div>
+            <h3>Gambar Rute</h3>
+            <p>Buat rute simulasi titik demi titik/freehand.</p>
+          </article>
+          <article className="process-card">
+            <div className="process-top">
+              <span className="process-num">03</span>
+            </div>
+            <h3>Hitung Spasial</h3>
+            <p>Buffer 500m, overlay data, cari alternatif.</p>
+          </article>
+          <article className="process-card">
+            <div className="process-top">
+              <span className="process-num">04</span>
+            </div>
+            <h3>Bandingkan Hasil</h3>
+            <p>Skor, breakdown, insight AI, rekomendasi.</p>
+          </article>
         </div>
       </section>
 
       <section id="demo" className="interactive-demo">
-        <p className="section-index">04 / DEMO</p>
+        <p className="section-index">02 / DEMO</p>
         <h2>Simulasi evaluasi satu layar.</h2>
         <div className="demo-body">
           <div className="demo-map-panel">
@@ -203,30 +176,26 @@ export default function LandingPage() {
       <section id="metodologi" className="section methodology">
         <div className="section-heading">
           <div>
-            <p className="section-index">05 / METODOLOGI</p>
+            <p className="section-index">03 / METODOLOGI</p>
             <h2>Bahasa skor yang sederhana untuk review cepat.</h2>
           </div>
-          <p>Sistem membaca rute sebagai objek spasial, bukan hanya garis visual. Buffer, overlay, dan grid-search dieksekusi di PostGIS.</p>
+          <p>Sistem membaca rute sebagai objek spasial, bukan hanya garis visual.</p>
         </div>
         <div className="formula-grid">
           <div className="formula-card">
-            <h4>Buffer 500 m</h4>
-            <p>Area layanan berjalan kaki di sekitar garis rute untuk menjangkau populasi dan titik aktivitas.</p>
+            <h4>Buffer 500m</h4>
             <span className="komponen">Komponen skor</span>
           </div>
           <div className="formula-card">
             <h4>Overlay Populasi</h4>
-            <p>Proporsi penduduk dalam buffer dihitung dari grid populasi yang tervalidasi.</p>
             <span className="komponen">Komponen skor</span>
           </div>
           <div className="formula-card">
             <h4>Overlap Existing</h4>
-            <p>Panjang tumpang tindih dengan koridor angkutan yang sudah beroperasi, diberi penalti.</p>
             <span className="komponen">Komponen skor</span>
           </div>
           <div className="formula-card">
-            <h4>Grid-search</h4>
-            <p>16 kandidat pergeseran kardinal (4 arah × 4 jarak) diuji untuk menemukan alignment terbaik.</p>
+            <h4>Grid-search Alternatif</h4>
             <span className="komponen">Komponen skor</span>
           </div>
         </div>
@@ -234,40 +203,47 @@ export default function LandingPage() {
 
       <section id="sumber" className="section sources-section">
         <div>
-          <p className="section-index">06 / SUMBER DATA</p>
+          <p className="section-index">04 / SUMBER DATA</p>
           <h2>Dibangun di atas konteks spasial MAPID.</h2>
         </div>
         <div className="source-list">
-          <div><Map size={20} /><span><b>MAPID Maps</b>Basemap jaringan jalan dan wilayah studi</span></div>
-          <div><Route size={20} /><span><b>Rute Existing</b>Koridor angkutan umum yang sudah beroperasi</span></div>
-          <div><Database size={20} /><span><b>Data Populasi</b>Estimasi warga dalam buffer layanan 500 m</span></div>
-          <div><Sparkles size={20} /><span><b>Property GO</b>Titik aktivitas dan potensi tujuan perjalanan</span></div>
+          <div><Map size={20} /><span><b>MAPID Maps</b>Basemap jaringan jalan dan wilayah studi.</span></div>
+          <div><Sparkles size={20} /><span><b>Property GO</b>Titik aktivitas dan potensi tujuan perjalanan.</span></div>
+          <div><Database size={20} /><span><b>Data Populasi</b>Estimasi warga dalam buffer layanan 500m.</span></div>
+          <div><Route size={20} /><span><b>Batas Administrasi</b>Kelurahan, kecamatan, atau area studi.</span></div>
         </div>
       </section>
 
       <section id="faq" className="section faq-section">
         <div>
-          <p className="section-index">07 / FAQ</p>
+          <p className="section-index">05 / FAQ</p>
           <h2>Pertanyaan yang sering muncul.</h2>
         </div>
         <div className="faq-list">
-          <details><summary>Apa maksud buffer 500 m?</summary><p>Area layanan berjalan kaki di sekitar rute untuk estimasi cakupan populasi dan titik aktivitas.</p></details>
-          <details><summary>Apakah AI mengarang angka spasial?</summary><p>Tidak. PostGIS menghitung semua metrik. AI hanya menerima nilai terverifikasi dan menyusunnya menjadi narasi Bahasa Indonesia.</p></details>
-          <details><summary>Apa yang dibandingkan sistem?</summary><p>Cakupan populasi per km, overlap dengan rute existing, dan skor dari 16 alternatif pergeseran kardinal.</p></details>
-          <details><summary>Apakah hasil ini siap untuk konstruksi?</summary><p>Belum. Hasil ditujukan untuk penyaringan ide awal sebelum studi teknis dan validasi lapangan.</p></details>
+          <details><summary>Apa maksud buffer 500m?</summary><p>Area layanan di sekitar rute untuk estimasi cakupan.</p></details>
+          <details><summary>Apakah AI mengarang insight?</summary><p>Tidak. Konsepnya membaca angka hasil analisis spasial.</p></details>
+          <details><summary>Apa yang dibandingkan?</summary><p>Populasi, skor, overlap, dan alternatif rute.</p></details>
+          <details><summary>Apakah sudah memakai backend?</summary><p>Belum. Landing ini memakai data tiruan untuk demo.</p></details>
         </div>
       </section>
 
       <section className="closing-cta">
         <div className="cta-line"><span /><i /><i /><i /><span /></div>
         <p>MULAI DARI RUTE PERTAMA</p>
-        <h2>Uji ide koridor transit sebelum masuk ke analisis teknis yang berat.</h2>
-        <Link href="/workspace" className="button button-primary">Buka workspace <ArrowRight size={18} /></Link>
+        <h2>Uji ide koridor transit sebelum masuk</h2>
+        <h2 style={{ marginTop: "-0.05em" }}>ke analisis teknis yang berat.</h2>
+        <p style={{ maxWidth: "600px", margin: "20px auto 0", color: "var(--muted)", lineHeight: "1.7", fontSize: "12px" }}>
+          Prototype ini merangkum layer peta, buffer 500m, overlay populasi, overlap rute,
+          dan insight rekomendasi dalam format yang mudah dipresentasikan.
+        </p>
+        <div style={{ marginTop: "32px" }}>
+          <Link href="/workspace" className="button button-primary">Buka workspace <ArrowRight size={18} /></Link>
+        </div>
       </section>
 
       <footer>
         <div className="brand"><span className="brand-mark"><Route size={19} /></span><span>TAE</span></div>
-        <p>Evaluator Aksesibilitas Transit · WebGIS berbasis MAPID</p>
+        <p>Evaluator Aksesibilitas Transit</p>
         <a href="#top">Kembali ke atas ↑</a>
       </footer>
     </main>
