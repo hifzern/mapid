@@ -62,10 +62,12 @@ export type MapContext = {
   existing_routes: FeatureCollection<{ name: string; route_type: string }>;
   population: FeatureCollection<{ density_band: string }>;
   property_go: FeatureCollection<{ kategori: string }>;
+  public_facilities: FeatureCollection<{ kategori: string }>;
   truncated: {
     existing_routes: boolean;
     population: boolean;
     property_go: boolean;
+    public_facilities: boolean;
   };
 };
 

@@ -13,7 +13,7 @@ type Props = {
   onContext: (context: MapContext) => void;
   onNotice: (notice: string) => void;
   analysis: AnalysisResult | null;
-  layers: { routes: boolean; population: boolean; property: boolean; buffer: boolean };
+  layers: { routes: boolean; population: boolean; property: boolean; facilities: boolean; buffer: boolean };
 };
 
 const densityColors: Record<string, string> = {
@@ -138,7 +138,7 @@ export default function TransitMap(props: Props) {
         <GeoJSON
           key="study-area"
           data={props.context.study_area as never}
-          style={{ color: "#0f766e", weight: 1.5, dashArray: "6 6", fillOpacity: 0 }}
+          style={{ color: "#14b8a6", weight: 1.5, dashArray: "6 6", fillOpacity: 0 }}
         />
       )}
 
@@ -174,11 +174,24 @@ export default function TransitMap(props: Props) {
           })}
         />
       )}
+      {props.context && props.layers.facilities && (
+        <GeoJSON
+          key={`facilities-${props.context.public_facilities?.features.length || 0}`}
+          data={props.context.public_facilities as never}
+          pointToLayer={(_, latlng) => L.circleMarker(latlng, {
+            radius: 6,
+            color: "#fff",
+            weight: 2,
+            fillColor: "#ef4444",
+            fillOpacity: 1,
+          })}
+        />
+      )}
       {props.analysis && props.layers.buffer && (
         <GeoJSON
           key={`buffer-${props.analysis.baseline.score}`}
           data={props.analysis.baseline.buffer_geojson as never}
-          style={{ color: "#0f766e", weight: 1.5, fillColor: "#14b8a6", fillOpacity: 0.14 }}
+          style={{ color: "#14b8a6", weight: 1.5, fillColor: "#14b8a6", fillOpacity: 0.14 }}
         />
       )}
       {props.analysis?.recommendation && (

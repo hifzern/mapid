@@ -7,15 +7,17 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
-  Database,
-  Eraser,
   Layers3,
   LoaderCircle,
-  MapPin,
   Play,
   Route as RouteIcon,
   Sparkles,
-  Users,
+  GitCompareArrows,
+  FileText,
+  Redo2,
+  Undo2,
+  Download,
+  Plus,
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
@@ -29,11 +31,29 @@ const TransitMap = dynamic(() => import("./TransitMap"), {
 const directionLabel = { north: "utara", south: "selatan", east: "timur", west: "barat" };
 
 function scoreLabel(score: number) {
-  if (score >= 80) return "Sangat baik";
+  if (score >= 80) return "Excellent";
   if (score >= 60) return "Baik";
   if (score >= 40) return "Cukup";
   return "Perlu perbaikan";
 }
+
+function roadFeasibility(score: number): string {
+  if (score >= 80) return "Baik";
+  if (score >= 60) return "Cukup";
+  return "Perlu tinjauan";
+}
+
+// demo route for Load Demo Route
+const demoRoute: LineString = {
+  type: "LineString",
+  coordinates: [
+    [106.8, -6.2],
+    [106.805, -6.205],
+    [106.81, -6.21],
+    [106.815, -6.215],
+    [106.82, -6.22],
+  ],
+};
 
 export default function Workspace() {
   const [route, setRoute] = useState<LineString | null>(null);
@@ -44,7 +64,7 @@ export default function Workspace() {
   const [insightLoading, setInsightLoading] = useState(false);
   const [error, setError] = useState("");
   const [mapNotice, setMapNotice] = useState("");
-  const [layers, setLayers] = useState({ routes: true, population: true, property: true, buffer: true });
+  const [layers, setLayers] = useState({ routes: true, population: true, property: true, facilities: true, buffer: true });
 
   const updateRoute = useCallback((nextRoute: LineString | null) => {
     setRoute(nextRoute);
@@ -86,7 +106,6 @@ export default function Workspace() {
       const narrative = await insightResponse.json();
       if (insightResponse.ok) setInsight(narrative);
     } catch {
-      // The verified spatial result remains visible when the narrative service fails.
     } finally {
       setInsightLoading(false);
     }
@@ -99,6 +118,29 @@ export default function Workspace() {
     await analyze(recommended);
   }
 
+  function loadDemo() {
+    setRoute(demoRoute);
+    setAnalysis(null);
+    setInsight(null);
+    setError("");
+  }
+
+  // Build AI paragraphs from the verified analysis data
+  function aiParagraphs(a: AnalysisResult): string[] {
+    const b = a.baseline;
+    const lines: string[] = [];
+    lines.push(`Rute ini menjangkau ${b.population_covered.toLocaleString("id-ID")} warga dalam buffer ${b.formula.buffer_meters} m dengan overlap rute existing ${b.overlap_pct}%.`);
+    if (b.overlap_pct > 15) {
+      lines.push(`Overlap ${b.overlap_pct}% masih perlu dikendalikan — prioritaskan koridor dengan tumpang tindih minimal.`);
+    } else {
+      lines.push(`Overlap ${b.overlap_pct}% masih dalam toleransi perencanaan.`);
+    }
+    if (a.recommendation) {
+      lines.push(`Geser segmen ${a.recommendation.distance_meters} m ke ${directionLabel[a.recommendation.direction]} untuk meningkatkan cakupan.`);
+    }
+    return lines;
+  }
+
   return (
     <main className="workspace">
       <header className="workspace-header">
@@ -106,24 +148,51 @@ export default function Workspace() {
           <Link href="/" aria-label="Kembali ke beranda"><ArrowLeft size={18} /></Link>
           <span className="brand-mark"><RouteIcon size={17} /></span>
           <div>
-            <strong>{context?.study_area.properties.name || "Studi koridor transit"}</strong>
-            <span>Evaluasi aksesibilitas rute angkutan umum</span>
+            <strong>{context?.study_area.properties.name || "Bandung Corridor Study"}</strong>
+            <span>Bandung Timur · Evaluasi aksesibilitas rute</span>
+          </div>
+          <div className="scenario-tabs">
+            <button className="scenario-tab active">Scenario A</button>
+            <button className="scenario-tab">Scenario B</button>
+            <button className="scenario-add" title="Buat scenario baru"><Plus size={12} /></button>
           </div>
         </div>
         <div className="workspace-meta">
-          <span className="save-state"><i /> Analisis tidak disimpan</span>
-          <Link href="/#metodologi" className="header-link">Metodologi</Link>
+          <span className="save-state"><i /> Unsaved</span>
+          <Link href="/#metodologi" className="header-link">Report</Link>
+          <button className="header-link"><Download size={12} /> Ekspor</button>
         </div>
       </header>
 
       <aside className="tool-panel">
-        <div className="panel-block route-tools">
-          <p className="panel-kicker">RUTE USULAN</p>
-          <h2>Gambar di peta</h2>
-          <p>Pakai alat garis di peta. Klik titik akhir dua kali untuk selesai.</p>
-          <button className="secondary-action" onClick={() => updateRoute(null)} disabled={!route}>
-            <Eraser size={16} /> Bersihkan rute
-          </button>
+        <div className="panel-block" style={{ paddingBottom: "16px" }}>
+          <p className="panel-kicker">PROJECT</p>
+          <div className="project-info">
+            <RouteIcon size={17} />
+            <h3>Bandung Corridor Study</h3>
+          </div>
+          <span className="project-loc">Bandung Timur</span>
+          <button className="load-demo-btn" onClick={loadDemo}><Play size={12} /> Load Demo Route</button>
+        </div>
+
+        <div className="panel-block">
+          <p className="panel-kicker">TOOLS</p>
+          <div className="tool-stack">
+            <div className="tool-row">
+              <button className="tool-btn shortcut">V</button>
+              <button className="tool-btn">Select</button>
+              <button className="tool-btn shortcut">E</button>
+              <button className="tool-btn">Edit Route</button>
+            </div>
+            <div className="tool-row">
+              <button className="tool-btn"><Undo2 size={14} /> Undo</button>
+              <button className="tool-btn"><Redo2 size={14} /> Redo</button>
+              <button className="tool-btn primary-btn" disabled={!route || loading} onClick={() => analyze()}>
+                {loading ? <LoaderCircle className="spin" size={14} /> : <Play size={14} fill="currentColor" />}
+                Evaluasi
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="panel-block">
@@ -141,28 +210,29 @@ export default function Workspace() {
             <input type="checkbox" checked={layers.property} onChange={() => setLayers({ ...layers, property: !layers.property })} />
           </label>
           <label className="layer-toggle">
+            <span><i className="swatch facility-swatch" /> Fasilitas publik</span>
+            <input type="checkbox" checked={layers.facilities} onChange={() => setLayers({ ...layers, facilities: !layers.facilities })} />
+          </label>
+          <label className="layer-toggle">
             <span><i className="swatch buffer-swatch" /> Buffer layanan</span>
             <input type="checkbox" checked={layers.buffer} onChange={() => setLayers({ ...layers, buffer: !layers.buffer })} />
           </label>
         </div>
 
         <div className="panel-block settings-block">
-          <div className="panel-label">Pengaturan analisis</div>
-          <label>Radius layanan <output>500 m</output></label>
-          <input type="range" min="500" max="500" value="500" readOnly aria-label="Radius layanan 500 meter" />
+          <div className="panel-label">PENGATURAN ANALISIS</div>
+          <label>Radius aksesibilitas <output>500 m</output></label>
+          <input type="range" min="500" max="500" value="500" readOnly aria-label="Radius aksesibilitas 500 meter" />
           <p>Bobot: populasi/km 62,5% · anti-overlap 37,5%</p>
-        </div>
-
-        <div className="evaluate-wrap">
-          <button className="evaluate-button" disabled={!route || loading} onClick={() => analyze()}>
-            {loading ? <LoaderCircle className="spin" size={18} /> : <Play size={18} fill="currentColor" />}
-            {loading ? "Menghitung…" : "Evaluasi rute"}
-          </button>
-          <span>{route ? `${route.coordinates.length} titik siap dianalisis` : "Gambar minimal dua titik"}</span>
         </div>
       </aside>
 
       <section className="map-canvas" aria-label="Peta evaluasi transit">
+        <div className="map-toolbar">
+          <button title="Perbesar" onClick={() => {}}>+</button>
+          <button title="Perkecil" onClick={() => {}}>−</button>
+          <button title="Sesuaikan tampilan" onClick={() => {}}>Fit</button>
+        </div>
         <TransitMap
           route={route}
           onRouteChange={updateRoute}
@@ -172,10 +242,13 @@ export default function Workspace() {
           analysis={analysis}
           layers={layers}
         />
-        <div className="map-legend workspace-legend">
-          <span><i className="legend-current" /> Rute saat ini</span>
-          <span><i className="legend-recommended" /> Rekomendasi</span>
-          <span><i className="legend-existing" /> Existing</span>
+        <div className="map-legend-box">
+          <span className="map-legend-title">Legenda</span>
+          <div className="map-legend-items">
+            <span><i className="legend-current" /> Current Route</span>
+            <span><i className="legend-recommended" /> Recommended</span>
+            <span><i className="legend-existing" /> Existing</span>
+          </div>
         </div>
         {mapNotice && <div className="map-notice"><CircleAlert size={15} /> {mapNotice}</div>}
       </section>
@@ -214,15 +287,15 @@ export default function Workspace() {
           <div className="result-content">
             <div className="result-heading">
               <div>
-                <p className="panel-kicker">HASIL EVALUASI</p>
-                <h2>Ringkasan koridor</h2>
+                <p className="panel-kicker">ACCESSIBILITY SCORE</p>
+                <h2>Panel Hasil</h2>
               </div>
               <span className="score-status"><i /> {scoreLabel(analysis.baseline.score)}</span>
             </div>
 
             <div className="score-overview">
               <div
-                className="score-ring"
+                className="score-ring-ws"
                 style={{ "--score": `${analysis.baseline.score * 3.6}deg` } as CSSProperties}
               >
                 <div><strong>{Math.round(analysis.baseline.score)}</strong><span>/ 100</span></div>
@@ -230,15 +303,41 @@ export default function Workspace() {
               <div><span>Transit Accessibility Score</span><p>Gabungan cakupan populasi per km dan penghindaran overlap.</p></div>
             </div>
 
-            <div className="metrics-grid">
-              <article><Users size={17} /><span>Populasi terjangkau</span><strong>{analysis.baseline.population_covered.toLocaleString("id-ID")}</strong></article>
-              <article><Database size={17} /><span>Populasi / km</span><strong>{analysis.baseline.population_per_km.toLocaleString("id-ID")}</strong></article>
-              <article><RouteIcon size={17} /><span>Overlap existing</span><strong>{analysis.baseline.overlap_pct.toLocaleString("id-ID")}%</strong></article>
-              <article><MapPin size={17} /><span>Property GO</span><strong>{analysis.baseline.property_go_count.toLocaleString("id-ID")}</strong></article>
+            <div className="metrics-grid-6">
+              <div className="metric-cell">
+                <div className="metric-label">POPULASI</div>
+                <div className="metric-value">{analysis.baseline.population_covered.toLocaleString("id-ID")}</div>
+                <div className="metric-unit">residents</div>
+              </div>
+              <div className="metric-cell">
+                <div className="metric-label">PROPERTY</div>
+                <div className="metric-value">{analysis.baseline.property_go_count.toLocaleString("id-ID")}</div>
+                <div className="metric-unit">area terjangkau</div>
+              </div>
+              <div className="metric-cell">
+                <div className="metric-label">OVERLAP</div>
+                <div className="metric-value">{analysis.baseline.overlap_pct}%</div>
+                <div className="metric-unit">rute existing</div>
+              </div>
+              <div className="metric-cell">
+                <div className="metric-label">PANJANG</div>
+                <div className="metric-value">{analysis.baseline.route_length_km.toLocaleString("id-ID")}</div>
+                <div className="metric-unit">estimasi</div>
+              </div>
+              <div className="metric-cell">
+                <div className="metric-label">JALAN</div>
+                <div className="metric-value">{roadFeasibility(analysis.baseline.score)}</div>
+                <div className="metric-unit">aksesibilitas</div>
+              </div>
+              <div className="metric-cell">
+                <div className="metric-label">FASILITAS</div>
+                <div className="metric-value">—</div>
+                <div className="metric-unit">sekolah + RS</div>
+              </div>
             </div>
 
             <div className="route-facts">
-              <span>Panjang rute <b>{analysis.baseline.route_length_km.toLocaleString("id-ID")} km</b></span>
+              <span>Populasi/km <b>{analysis.baseline.population_per_km.toLocaleString("id-ID")}</b></span>
               <span>Buffer layanan <b>{analysis.baseline.formula.buffer_meters} m</b></span>
             </div>
 
@@ -247,11 +346,19 @@ export default function Workspace() {
               {insightLoading && <p className="ai-loading"><LoaderCircle className="spin" size={16} /> Menyusun insight terverifikasi…</p>}
               {insight ? (
                 <div className="ai-content">
-                  <p>{insight.summary}</p>
-                  <ul>{insight.actions.map((action) => <li key={action}>{action}</li>)}</ul>
+                  {insight.summary.split(". ").filter(Boolean).map((s, i) => (
+                    <p key={i} className="ai-paragraph">{s}.</p>
+                  ))}
                   {insight.source === "template" && <small>Narasi fallback deterministik</small>}
                 </div>
-              ) : !insightLoading ? <p className="ai-unavailable">Insight AI belum tersedia. Angka spasial di atas tetap valid.</p> : null}
+              ) : analysis && !insightLoading ? (
+                <div className="ai-content">
+                  {aiParagraphs(analysis).map((p, i) => (
+                    <p key={i} className="ai-paragraph">{p}</p>
+                  ))}
+                  <small>Narasi deterministik dari data PostGIS</small>
+                </div>
+              ) : null}
             </section>
 
             {analysis.recommendation ? (
@@ -262,11 +369,16 @@ export default function Workspace() {
                   <span>Skor <b>+{analysis.recommendation.score_delta}</b></span>
                   <span>Populasi/km <b>+{analysis.recommendation.population_per_km_delta.toLocaleString("id-ID")}</b></span>
                 </div>
-                <button className="apply-button" onClick={applyRecommendation}><Check size={17} /> Terapkan & evaluasi ulang</button>
+                <button className="apply-button" onClick={applyRecommendation}><Check size={17} /> Terapkan Rekomendasi</button>
               </section>
             ) : (
               <section className="no-recommendation"><Check size={17} /><span><b>Alignment saat ini paling kuat</b>Tidak ada pergeseran teruji yang meningkatkan skor.</span></section>
             )}
+
+            <div className="action-row">
+              <button className="secondary-action"><GitCompareArrows size={14} /> Bandingkan Rute</button>
+              <button className="secondary-action"><FileText size={14} /> Ekspor Report</button>
+            </div>
           </div>
         )}
       </aside>

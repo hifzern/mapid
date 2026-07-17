@@ -1,8 +1,8 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  Bot,
   Check,
+  ChevronRight,
   Database,
   Pencil,
   Layers3,
@@ -13,10 +13,10 @@ import {
 } from "lucide-react";
 
 const steps = [
-  { icon: Layers3, title: "Pilih layer", text: "Tampilkan rute existing, kepadatan penduduk, dan Property GO." },
-  { icon: Pencil, title: "Gambar rute", text: "Buat koridor usulan langsung di atas peta MAPID." },
-  { icon: ScanSearch, title: "Hitung spasial", text: "PostGIS membentuk buffer 500 m, menghitung cakupan, dan menguji alternatif." },
-  { icon: Bot, title: "Baca rekomendasi", text: "Bandingkan hasil terverifikasi dan tindakan yang dinarasikan AI." },
+  { icon: Layers3, title: "Pilih Layer", text: "Aktifkan rute existing, populasi, Property GO, dan fasilitas publik." },
+  { icon: Pencil, title: "Gambar Rute", text: "Buat rute simulasi titik demi titik langsung di peta MAPID." },
+  { icon: ScanSearch, title: "Hitung Spasial", text: "Buffer 500 m, overlay data, cari 16 alternatif alignment." },
+  { icon: ChevronRight, title: "Bandingkan Hasil", text: "Skor komposit, breakdown metrik, insight AI, rekomendasi." },
 ];
 
 export default function LandingPage() {
@@ -29,8 +29,8 @@ export default function LandingPage() {
         </Link>
         <div className="nav-links">
           <a href="#cara-kerja">Cara kerja</a>
+          <a href="#demo">Demo</a>
           <a href="#metodologi">Metodologi</a>
-          <a href="#sumber">Sumber data</a>
           <a href="#faq">FAQ</a>
         </div>
         <Link href="/workspace" className="nav-cta">Buka workspace <ArrowRight size={16} /></Link>
@@ -39,16 +39,16 @@ export default function LandingPage() {
       <section className="hero">
         <div className="hero-copy">
           <span className="eyebrow"><span /> Alat evaluasi WebGIS untuk perencana kota</span>
-          <h1>Nilai sebuah rute sebelum kota membangunnya.</h1>
+          <h1>Evaluator Aksesibilitas Transit</h1>
           <p>
-            Gambar koridor transit, ukur warga yang terjangkau, kendalikan tumpang tindih,
-            lalu lihat alternatif yang dihitung dari data spasial nyata.
+            Evaluasi ide rute transportasi publik dengan konteks spasial, metrik yang jelas,
+            dan rekomendasi perencanaan berbasis AI menggunakan data MAPID.
           </p>
           <div className="hero-actions">
             <Link href="/workspace" className="button button-primary">
-              Evaluasi rute <ArrowRight size={18} />
+              Coba Demo <ArrowRight size={18} />
             </Link>
-            <a href="#cara-kerja" className="button button-quiet">Lihat cara kerja</a>
+            <a href="#cara-kerja" className="button button-quiet">Pelajari</a>
           </div>
           <div className="hero-proof">
             <span><Check size={15} /> Tanpa login</span>
@@ -99,14 +99,17 @@ export default function LandingPage() {
         <div className="section-heading">
           <div>
             <p className="section-index">02 / CARA KERJA</p>
-            <h2>Empat langkah dari garis ke keputusan.</h2>
+            <h2>Dari layer peta sampai rekomendasi rute.</h2>
           </div>
-          <p>Satu alur linear, tanpa dashboard dan konfigurasi yang mengalihkan perhatian dari analisis.</p>
+          <p>Pilih data, gambar rute, hitung dampak spasial, lalu bandingkan hasilnya.</p>
         </div>
         <div className="process-grid">
           {steps.map(({ icon: Icon, title, text }, index) => (
             <article className="process-card" key={title}>
-              <div className="process-top"><span>0{index + 1}</span><Icon size={23} /></div>
+              <div className="process-top">
+                <span className="process-num">0{index + 1}</span>
+                <Icon size={23} />
+              </div>
               <h3>{title}</h3>
               <p>{text}</p>
             </article>
@@ -134,8 +137,8 @@ export default function LandingPage() {
             </div>
             <div className="preview-map-grid">
               <svg viewBox="0 0 520 360">
-                <path d="M-10 310 C130 250 180 100 310 170 S420 170 540 30" fill="none" stroke="#1d4ed8" strokeWidth="7" />
-                <path d="M15 335 C150 260 190 130 310 195 S440 190 550 60" fill="none" stroke="#2dd4bf" strokeDasharray="10 10" strokeWidth="5" />
+                <path d="M-10 310 C130 250 180 100 310 170 S420 170 540 30" fill="none" stroke="#2563eb" strokeWidth="7" />
+                <path d="M15 335 C150 260 190 130 310 195 S440 190 550 60" fill="none" stroke="#14b8a6" strokeDasharray="10 10" strokeWidth="5" />
               </svg>
             </div>
             <div className="preview-result"><b>Skor rute</b><strong>—</strong><i /><i /><i /></div>
@@ -143,49 +146,114 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section id="demo" className="interactive-demo">
+        <p className="section-index">04 / DEMO</p>
+        <h2>Simulasi evaluasi satu layar.</h2>
+        <div className="demo-body">
+          <div className="demo-map-panel">
+            <div className="demo-badges">
+              <span className="demo-badge active">Basemap MAPID</span>
+              <span className="demo-badge route-badge">KORIDOR USULAN</span>
+              <span className="demo-badge">BUFFER 500M</span>
+              <span className="demo-badge">RUTE EXISTING</span>
+              <span className="demo-badge">POPULASI</span>
+              <span className="demo-badge">PROPERTY GO</span>
+            </div>
+            <div className="demo-map-area">
+              <div className="demo-buffer-zone" />
+              <div className="demo-route-line" />
+              <span className="demo-road-lbl" style={{ left: "8%", top: "22%" }}>JALAN ARIEF RAHMAN HAKIM</span>
+              <span className="demo-road-lbl" style={{ right: "6%", bottom: "18%" }}>JALAN KELAMPIS JAYA</span>
+              <span className="demo-poi" style={{ left: "28%", top: "25%" }} />
+              <span className="demo-poi-lbl" style={{ left: "29%", top: "21%" }}>Hisana</span>
+              <span className="demo-poi" style={{ left: "55%", top: "55%" }} />
+              <span className="demo-poi-lbl" style={{ right: "38%", bottom: "38%" }}>Saga Textile</span>
+              <button className="demo-evaluate-btn" disabled>Evaluasi</button>
+            </div>
+          </div>
+          <div className="demo-result-card">
+            <div className="demo-result-header">
+              <span>ACCESSIBILITY SCORE</span>
+              <span>Sangat baik</span>
+            </div>
+            <h3 className="demo-result-title">Cibubur Connector</h3>
+            <div className="demo-score-row">
+              <div className="demo-score-ring">
+                <div><strong>86</strong><span>/ 100</span></div>
+              </div>
+              <div className="demo-score-meta">
+                <span>Transit Accessibility Score</span>
+                <strong>+4 dari baseline</strong>
+                <span>Pergeseran 500 m ke utara</span>
+              </div>
+            </div>
+            <div className="demo-metrics-grid">
+              <div className="demo-metric-box"><span>POPULASI</span><strong>124 rb</strong></div>
+              <div className="demo-metric-box"><span>OVERLAP</span><strong>14%</strong></div>
+              <div className="demo-metric-box"><span>PROPERTY</span><strong>167</strong></div>
+            </div>
+            <div className="demo-insight">
+              <p>Rute ini menjangkau 124.000 warga dalam buffer 500 m dengan overlap rute existing 14%. Cakupan populasi per km termasuk sangat baik untuk koridor arteri sekunder.</p>
+              <small>Narasi deterministik berdasarkan data dummy</small>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="metodologi" className="section methodology">
         <div className="section-heading">
           <div>
-            <p className="section-index">04 / METODOLOGI</p>
-            <h2>Rumus sederhana, asumsi dinyatakan.</h2>
+            <p className="section-index">05 / METODOLOGI</p>
+            <h2>Bahasa skor yang sederhana untuk review cepat.</h2>
           </div>
-          <p>Skor membantu peninjauan awal. Ia tidak menggantikan studi teknis, survei lapangan, atau keputusan kebijakan.</p>
+          <p>Sistem membaca rute sebagai objek spasial, bukan hanya garis visual. Buffer, overlay, dan grid-search dieksekusi di PostGIS.</p>
         </div>
-        <div className="formula-card">
-          <div className="formula-main">
-            <span>Transit Accessibility Score</span>
-            <code>populasi/km × 62,5% + anti-overlap × 37,5%</code>
+        <div className="formula-grid">
+          <div className="formula-card">
+            <h4>Buffer 500 m</h4>
+            <p>Area layanan berjalan kaki di sekitar garis rute untuk menjangkau populasi dan titik aktivitas.</p>
+            <span className="komponen">Komponen skor</span>
           </div>
-          <div className="formula-notes">
-            <div><strong>500 m</strong><span>Buffer layanan di sekitar garis rute</span></div>
-            <div><strong>16</strong><span>Kandidat pergeseran kardinal yang diuji</span></div>
-            <div><strong>0–100</strong><span>Skor komposit yang mudah dibandingkan</span></div>
+          <div className="formula-card">
+            <h4>Overlay Populasi</h4>
+            <p>Proporsi penduduk dalam buffer dihitung dari grid populasi yang tervalidasi.</p>
+            <span className="komponen">Komponen skor</span>
+          </div>
+          <div className="formula-card">
+            <h4>Overlap Existing</h4>
+            <p>Panjang tumpang tindih dengan koridor angkutan yang sudah beroperasi, diberi penalti.</p>
+            <span className="komponen">Komponen skor</span>
+          </div>
+          <div className="formula-card">
+            <h4>Grid-search</h4>
+            <p>16 kandidat pergeseran kardinal (4 arah × 4 jarak) diuji untuk menemukan alignment terbaik.</p>
+            <span className="komponen">Komponen skor</span>
           </div>
         </div>
       </section>
 
       <section id="sumber" className="section sources-section">
         <div>
-          <p className="section-index">05 / SUMBER DATA</p>
-          <h2>Data yang dipakai selalu terlihat asalnya.</h2>
+          <p className="section-index">06 / SUMBER DATA</p>
+          <h2>Dibangun di atas konteks spasial MAPID.</h2>
         </div>
         <div className="source-list">
-          <div><Map size={20} /><span><b>MAPID MAPS</b>Basemap utama dan konteks geospasial</span></div>
-          <div><Route size={20} /><span><b>Rute existing</b>Koridor angkutan umum yang sudah beroperasi</span></div>
-          <div><Database size={20} /><span><b>Data populasi</b>Grid atau wilayah administrasi tervalidasi</span></div>
-          <div><Sparkles size={20} /><span><b>Property GO</b>Titik aktivitas sebagai konteks kawasan</span></div>
+          <div><Map size={20} /><span><b>MAPID Maps</b>Basemap jaringan jalan dan wilayah studi</span></div>
+          <div><Route size={20} /><span><b>Rute Existing</b>Koridor angkutan umum yang sudah beroperasi</span></div>
+          <div><Database size={20} /><span><b>Data Populasi</b>Estimasi warga dalam buffer layanan 500 m</span></div>
+          <div><Sparkles size={20} /><span><b>Property GO</b>Titik aktivitas dan potensi tujuan perjalanan</span></div>
         </div>
       </section>
 
       <section id="faq" className="section faq-section">
         <div>
-          <p className="section-index">06 / FAQ</p>
-          <h2>Pertanyaan sebelum menggambar.</h2>
+          <p className="section-index">07 / FAQ</p>
+          <h2>Pertanyaan yang sering muncul.</h2>
         </div>
         <div className="faq-list">
-          <details><summary>Apa arti buffer 500 meter?</summary><p>Area layanan berjalan kaki di sekitar rute yang digunakan untuk memperkirakan populasi dan titik aktivitas yang terjangkau.</p></details>
-          <details><summary>Apakah AI menghitung angka spasial?</summary><p>Tidak. PostGIS menghitung semua metrik. AI hanya menerima nilai terpilih dan menyusunnya menjadi narasi Bahasa Indonesia.</p></details>
-          <details><summary>Apa yang dibandingkan sistem?</summary><p>Cakupan populasi per kilometre, overlap dengan rute existing, dan skor dari 16 alternatif pergeseran.</p></details>
+          <details><summary>Apa maksud buffer 500 m?</summary><p>Area layanan berjalan kaki di sekitar rute untuk estimasi cakupan populasi dan titik aktivitas.</p></details>
+          <details><summary>Apakah AI mengarang angka spasial?</summary><p>Tidak. PostGIS menghitung semua metrik. AI hanya menerima nilai terverifikasi dan menyusunnya menjadi narasi Bahasa Indonesia.</p></details>
+          <details><summary>Apa yang dibandingkan sistem?</summary><p>Cakupan populasi per km, overlap dengan rute existing, dan skor dari 16 alternatif pergeseran kardinal.</p></details>
           <details><summary>Apakah hasil ini siap untuk konstruksi?</summary><p>Belum. Hasil ditujukan untuk penyaringan ide awal sebelum studi teknis dan validasi lapangan.</p></details>
         </div>
       </section>
@@ -193,13 +261,13 @@ export default function LandingPage() {
       <section className="closing-cta">
         <div className="cta-line"><span /><i /><i /><i /><span /></div>
         <p>MULAI DARI RUTE PERTAMA</p>
-        <h2>Uji koridor transit sebelum analisis menjadi mahal.</h2>
+        <h2>Uji ide koridor transit sebelum masuk ke analisis teknis yang berat.</h2>
         <Link href="/workspace" className="button button-primary">Buka workspace <ArrowRight size={18} /></Link>
       </section>
 
       <footer>
         <div className="brand"><span className="brand-mark"><Route size={19} /></span><span>TAE</span></div>
-        <p>Transit Accessibility Evaluator · WebGIS berbasis MAPID</p>
+        <p>Evaluator Aksesibilitas Transit · WebGIS berbasis MAPID</p>
         <a href="#top">Kembali ke atas ↑</a>
       </footer>
     </main>
