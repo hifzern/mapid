@@ -141,7 +141,7 @@ export default function LandingPage() {
                 <path d="M15 335 C150 260 190 130 310 195 S440 190 550 60" fill="none" stroke="#14b8a6" strokeDasharray="10 10" strokeWidth="5" />
               </svg>
             </div>
-            <div className="preview-result"><b>Skor rute</b><strong>—</strong><i /><i /><i /></div>
+            <div className="preview-result"><b>Skor rute</b><strong>-</strong><i /><i /><i /></div>
           </div>
         </div>
       </section>

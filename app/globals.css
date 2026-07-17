@@ -189,10 +189,13 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .scenario-tab { padding: 5px 12px; background: #fff; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); font-size: 10px; font-weight: 650; cursor: pointer; }
 .scenario-tab.active { color: var(--teal); border-color: var(--teal); background: rgba(15,118,110,.06); }
 .scenario-add { width: 26px; height: 26px; display: grid; place-items: center; background: #fff; border: 1px dashed var(--line); border-radius: 5px; color: var(--muted); font-size: 14px; cursor: pointer; }
-.workspace-meta { display: flex; align-items: center; gap: 19px; color: var(--muted); font-size: 11px; }
+.scenario-duplikat { padding: 5px 10px; background: #fff; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); font-size: 10px; font-weight: 650; cursor: pointer; }
+.scenario-duplikat:hover { border-color: var(--teal); color: var(--teal); }
+.workspace-meta { display: flex; align-items: center; gap: 16px; color: var(--muted); font-size: 11px; }
+.workspace-meta .divider { width: 1px; height: 18px; background: var(--line); }
 .save-state { display: flex; align-items: center; gap: 7px; }.save-state i { width: 6px; height: 6px; background: #94a3b8; border-radius: 50%; }
-.header-link { padding: 8px 11px; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; font-weight: 650; background: #fff; cursor: pointer; font-size: 11px; }
-.header-link:hover { border-color: var(--teal); color: var(--teal); }
+.header-link { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); font-weight: 600; font-size: 11px; cursor: pointer; background: none; border: 0; padding: 0; text-decoration: none; }
+.header-link:hover { color: var(--teal); }
 .tool-panel { grid-area: tools; z-index: 400; overflow-y: auto; background: #fff; border-right: 1px solid var(--line); }
 .panel-block { padding: 22px 20px; border-bottom: 1px solid var(--line); }
 .panel-kicker { margin: 0 0 7px; color: var(--teal); font-family: var(--font-metric); font-size: 9px; font-weight: 800; letter-spacing: .12em; }

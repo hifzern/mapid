@@ -131,7 +131,7 @@ export default function Workspace() {
     const lines: string[] = [];
     lines.push(`Rute ini menjangkau ${b.population_covered.toLocaleString("id-ID")} warga dalam buffer ${b.formula.buffer_meters} m dengan overlap rute existing ${b.overlap_pct}%.`);
     if (b.overlap_pct > 15) {
-      lines.push(`Overlap ${b.overlap_pct}% masih perlu dikendalikan — prioritaskan koridor dengan tumpang tindih minimal.`);
+      lines.push(`Overlap ${b.overlap_pct}% masih perlu dikendalikan. Prioritaskan koridor dengan tumpang tindih minimal.`);
     } else {
       lines.push(`Overlap ${b.overlap_pct}% masih dalam toleransi perencanaan.`);
     }
@@ -155,10 +155,12 @@ export default function Workspace() {
             <button className="scenario-tab active">Scenario A</button>
             <button className="scenario-tab">Scenario B</button>
             <button className="scenario-add" title="Buat scenario baru"><Plus size={12} /></button>
+            <button className="scenario-duplikat">Duplikat</button>
           </div>
         </div>
         <div className="workspace-meta">
           <span className="save-state"><i /> Unsaved</span>
+          <span className="divider" />
           <Link href="/#metodologi" className="header-link">Report</Link>
           <button className="header-link"><Download size={12} /> Ekspor</button>
         </div>
@@ -331,7 +333,7 @@ export default function Workspace() {
               </div>
               <div className="metric-cell">
                 <div className="metric-label">FASILITAS</div>
-                <div className="metric-value">—</div>
+                <div className="metric-value">-</div>
                 <div className="metric-unit">sekolah + RS</div>
               </div>
             </div>
