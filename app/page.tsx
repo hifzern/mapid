@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  Check,
   Database,
   Map,
   Route,
@@ -27,7 +26,6 @@ export default function LandingPage() {
 
       <section className="hero">
         <div className="hero-copy">
-          <span className="eyebrow"><span /> Alat evaluasi WebGIS untuk perencana kota</span>
           <h1>Evaluator Aksesibilitas</h1>
           <h1 style={{ marginTop: "-0.12em" }}>Transit</h1>
           <p>
@@ -39,11 +37,6 @@ export default function LandingPage() {
               Coba Demo <ArrowRight size={18} />
             </Link>
             <a href="#cara-kerja" className="button button-quiet">Pelajari</a>
-          </div>
-          <div className="hero-proof">
-            <span><Check size={15} /> Tanpa login</span>
-            <span><Check size={15} /> Rumus terbuka</span>
-            <span><Check size={15} /> MAPID MAPS</span>
           </div>
         </div>
 
@@ -70,19 +63,13 @@ export default function LandingPage() {
               </g>
             ))}
           </svg>
-          <div className="map-callout callout-one"><span>01</span> Koridor usulan</div>
-          <div className="map-callout callout-two"><span>500 m</span> Area layanan</div>
-          <div className="map-legend">
-            <span><i className="legend-current" /> Rute saat ini</span>
-            <span><i className="legend-buffer" /> Buffer layanan</span>
-          </div>
         </div>
       </section>
 
       <section id="cara-kerja" className="section process-section">
         <div className="section-heading">
           <div>
-            <p className="section-index">01 / CARA KERJA</p>
+            <p className="section-index">CARA KERJA</p>
             <h2>Dari layer peta sampai rekomendasi rute.</h2>
           </div>
           <p>Pilih data, gambar rute, hitung dampak spasial, lalu bandingkan hasilnya.</p>
@@ -120,12 +107,11 @@ export default function LandingPage() {
       </section>
 
       <section id="demo" className="interactive-demo">
-        <p className="section-index">02 / DEMO</p>
-        <h2>Simulasi evaluasi satu layar.</h2>
+        <p className="section-index">Mode Demo</p>
         <div className="demo-body">
           <div className="demo-map-panel">
             <div className="demo-badges">
-              <span className="demo-badge active">Basemap MAPID</span>
+              <span className="demo-badge active">Basemap MAPID mock</span>
               <span className="demo-badge route-badge">KORIDOR USULAN</span>
               <span className="demo-badge">BUFFER 500M</span>
               <span className="demo-badge">RUTE EXISTING</span>
@@ -146,18 +132,14 @@ export default function LandingPage() {
           </div>
           <div className="demo-result-card">
             <div className="demo-result-header">
-              <span>ACCESSIBILITY SCORE</span>
-              <span>Sangat baik</span>
+              <span>KARTU HASIL</span>
             </div>
+            <p style={{ color: "var(--muted)", fontSize: "9px", margin: "-12px 0 12px" }}>Hasil simulasi</p>
             <h3 className="demo-result-title">Cibubur Connector</h3>
+            <p style={{ color: "var(--muted)", fontSize: "9px", margin: "0 0 8px" }}>Skor Komposit</p>
             <div className="demo-score-row">
               <div className="demo-score-ring">
-                <div><strong>86</strong><span>/ 100</span></div>
-              </div>
-              <div className="demo-score-meta">
-                <span>Transit Accessibility Score</span>
-                <strong>+4 dari baseline</strong>
-                <span>Pergeseran 500 m ke utara</span>
+                <div><strong>86</strong></div>
               </div>
             </div>
             <div className="demo-metrics-grid">
@@ -166,8 +148,7 @@ export default function LandingPage() {
               <div className="demo-metric-box"><span>PROPERTY</span><strong>167</strong></div>
             </div>
             <div className="demo-insight">
-              <p>Rute ini menjangkau 124.000 warga dalam buffer 500 m dengan overlap rute existing 14%. Cakupan populasi per km termasuk sangat baik untuk koridor arteri sekunder.</p>
-              <small>Narasi deterministik berdasarkan data dummy</small>
+              <p>Meniru hasil backend: skor komposit, populasi, overlap, dan kondisi jalan.</p>
             </div>
           </div>
         </div>
@@ -176,7 +157,7 @@ export default function LandingPage() {
       <section id="metodologi" className="section methodology">
         <div className="section-heading">
           <div>
-            <p className="section-index">03 / METODOLOGI</p>
+            <p className="section-index">METODOLOGI</p>
             <h2>Bahasa skor yang sederhana untuk review cepat.</h2>
           </div>
           <p>Sistem membaca rute sebagai objek spasial, bukan hanya garis visual.</p>
@@ -203,7 +184,7 @@ export default function LandingPage() {
 
       <section id="sumber" className="section sources-section">
         <div>
-          <p className="section-index">04 / SUMBER DATA</p>
+          <p className="section-index">SUMBER DATA</p>
           <h2>Dibangun di atas konteks spasial MAPID.</h2>
         </div>
         <div className="source-list">
@@ -216,8 +197,11 @@ export default function LandingPage() {
 
       <section id="faq" className="section faq-section">
         <div>
-          <p className="section-index">05 / FAQ</p>
+          <p className="section-index">FAQ</p>
           <h2>Pertanyaan yang sering muncul.</h2>
+          <p style={{ color: "var(--muted)", lineHeight: "1.7", fontSize: "12px", margin: "11px 0 0" }}>
+            Cara kerja analisis, batasan prototype, dan penggunaan hasil untuk stakeholder.
+          </p>
         </div>
         <div className="faq-list">
           <details><summary>Apa maksud buffer 500m?</summary><p>Area layanan di sekitar rute untuk estimasi cakupan.</p></details>
@@ -244,7 +228,6 @@ export default function LandingPage() {
       <footer>
         <div className="brand"><span className="brand-mark"><Route size={19} /></span><span>TAE</span></div>
         <p>Evaluator Aksesibilitas Transit</p>
-        <a href="#top">Kembali ke atas ↑</a>
       </footer>
     </main>
   );
