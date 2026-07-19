@@ -4,7 +4,24 @@ import L from "leaflet";
 import "leaflet-draw";
 import { useEffect, useRef } from "react";
 import { GeoJSON, MapContainer, TileLayer, useMap } from "react-leaflet";
-import type { AnalysisResult, LineString, MapContext } from "@/lib/types";
+import type {
+  AnalysisResult,
+  Feature,
+  LineString,
+  MapContext,
+  MapFeatureKind,
+  SelectedFeature,
+} from "@/lib/types";
+
+type LayerVisibility = {
+  routes: boolean;
+  population: boolean;
+  property: boolean;
+  facilities: boolean;
+  buffer: boolean;
+};
+
+type FocusRequest = SelectedFeature & { nonce: number };
 
 type Props = {
   route: LineString | null;
@@ -13,7 +30,10 @@ type Props = {
   onContext: (context: MapContext) => void;
   onNotice: (notice: string) => void;
   analysis: AnalysisResult | null;
-  layers: { routes: boolean; population: boolean; property: boolean; facilities: boolean; buffer: boolean };
+  layers: LayerVisibility;
+  selectedFeature: SelectedFeature | null;
+  onFeatureSelect: (feature: SelectedFeature) => void;
+  focusRequest: FocusRequest | null;
 };
 
 const densityColors: Record<string, string> = {
@@ -24,6 +44,14 @@ const densityColors: Record<string, string> = {
   very_high: "#0f766e",
 };
 
+const densityLabels: Record<string, string> = {
+  very_low: "Sangat rendah",
+  low: "Rendah",
+  medium: "Sedang",
+  high: "Tinggi",
+  very_high: "Sangat tinggi",
+};
+
 function DrawingControl({ route, onRouteChange }: Pick<Props, "route" | "onRouteChange">) {
   const map = useMap();
   const group = useRef<L.FeatureGroup | null>(null);
@@ -32,7 +60,7 @@ function DrawingControl({ route, onRouteChange }: Pick<Props, "route" | "onRoute
     const featureGroup = new L.FeatureGroup().addTo(map);
     group.current = featureGroup;
     const control = new L.Control.Draw({
-      position: "topleft",
+      position: "topright",
       draw: {
         polyline: { shapeOptions: { color: "#2563eb", weight: 5 } },
         polygon: false,
@@ -84,6 +112,25 @@ function DrawingControl({ route, onRouteChange }: Pick<Props, "route" | "onRoute
   return null;
 }
 
+function MapToolbar({ route, context }: Pick<Props, "route" | "context">) {
+  const map = useMap();
+
+  function fit() {
+    const geometry = route || context?.study_area;
+    if (!geometry) return;
+    const bounds = L.geoJSON(geometry as never).getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [28, 28], maxZoom: 16 });
+  }
+
+  return (
+    <div className="map-toolbar leaflet-control" role="group" aria-label="Kontrol tampilan peta">
+      <button type="button" title="Perbesar" aria-label="Perbesar" onClick={() => map.zoomIn()}>+</button>
+      <button type="button" title="Perkecil" aria-label="Perkecil" onClick={() => map.zoomOut()}>−</button>
+      <button type="button" title="Sesuaikan tampilan" aria-label="Sesuaikan tampilan" onClick={fit} disabled={!route && !context}>Fit</button>
+    </div>
+  );
+}
+
 function ContextLoader({ onContext, onNotice }: Pick<Props, "onContext" | "onNotice">) {
   const map = useMap();
   const fitted = useRef(false);
@@ -101,7 +148,7 @@ function ContextLoader({ onContext, onNotice }: Pick<Props, "onContext" | "onNot
         if (!response.ok) throw new Error(result.error || "Layer peta gagal dimuat.");
         onContext(result);
         const truncated = Object.values(result.truncated as Record<string, boolean>).some(Boolean);
-        onNotice(truncated ? "Sebagian layer dibatasi. Perbesar peta untuk detail." : "");
+        onNotice(truncated ? "Sebagian data pada viewport dibatasi hingga 5.000 objek per layer." : "");
         if (!fitted.current && result.study_area?.geometry) {
           map.fitBounds(L.geoJSON(result.study_area).getBounds(), { padding: [28, 28] });
           fitted.current = true;
@@ -121,10 +168,55 @@ function ContextLoader({ onContext, onNotice }: Pick<Props, "onContext" | "onNot
   return null;
 }
 
+function findFeature(context: MapContext, selected: SelectedFeature): Feature | undefined {
+  const collections = {
+    existing_route: context.existing_routes,
+    population: context.population,
+    property_go: context.property_go,
+    public_facility: context.public_facilities,
+  };
+  return collections[selected.kind].features.find((feature) => feature.properties.id === selected.id) as Feature | undefined;
+}
+
+function MapFocus({ context, focusRequest }: Pick<Props, "context" | "focusRequest">) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!context || !focusRequest) return;
+    const feature = findFeature(context, focusRequest);
+    if (!feature) return;
+    if (feature.geometry.type === "Point") {
+      map.setView([feature.geometry.coordinates[1], feature.geometry.coordinates[0]], Math.max(map.getZoom(), 16));
+      return;
+    }
+    const bounds = L.geoJSON(feature as never).getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [56, 56], maxZoom: 16 });
+  }, [context, focusRequest, map]);
+
+  return null;
+}
+
+function featureEvents(
+  kind: MapFeatureKind,
+  onFeatureSelect: Props["onFeatureSelect"],
+  tooltip: (feature: Feature) => string,
+) {
+  return (rawFeature: GeoJSON.Feature, layer: L.Layer) => {
+    const feature = rawFeature as unknown as Feature<{ id: string }>;
+    layer.bindTooltip(tooltip(feature), { sticky: true, direction: "top" });
+    layer.on("click", () => onFeatureSelect({ kind, id: feature.properties.id }));
+  };
+}
+
 export default function TransitMap(props: Props) {
   const tileUrl = process.env.NEXT_PUBLIC_MAPID_TILE_URL;
+  const selected = (kind: MapFeatureKind, id: string) => (
+    props.selectedFeature?.kind === kind && props.selectedFeature.id === id
+  );
+  const selectionKey = props.selectedFeature ? `${props.selectedFeature.kind}-${props.selectedFeature.id}` : "none";
+
   return (
-    <MapContainer center={[-2.5, 118]} zoom={5} minZoom={4} className="leaflet-map" zoomControl>
+    <MapContainer center={[-2.5, 118]} zoom={5} minZoom={4} className="leaflet-map" zoomControl={false}>
       {tileUrl && (
         <TileLayer
           url={tileUrl}
@@ -132,59 +224,103 @@ export default function TransitMap(props: Props) {
         />
       )}
       <ContextLoader onContext={props.onContext} onNotice={props.onNotice} />
+      <MapToolbar route={props.route} context={props.context} />
+      <MapFocus context={props.context} focusRequest={props.focusRequest} />
       <DrawingControl route={props.route} onRouteChange={props.onRouteChange} />
 
       {props.context && (
         <GeoJSON
           key="study-area"
           data={props.context.study_area as never}
-          style={{ color: "#14b8a6", weight: 1.5, dashArray: "6 6", fillOpacity: 0 }}
+          style={{ color: "#14b8a6", weight: 2, dashArray: "7 6", fillOpacity: 0 }}
         />
       )}
 
       {props.context && props.layers.population && (
         <GeoJSON
-          key={`population-${props.context.population.features.length}`}
+          key={`population-${props.context.population.features.map((feature) => feature.properties.id).join("-")}-${selectionKey}`}
           data={props.context.population as never}
-          style={(feature) => ({
-            color: "#0f766e",
-            weight: 0.5,
-            fillColor: densityColors[feature?.properties?.density_band] || "#99f6e4",
-            fillOpacity: 0.34,
-          })}
+          style={(feature) => {
+            const properties = feature?.properties as { id?: string; density_band?: string } | undefined;
+            const isSelected = Boolean(properties?.id && selected("population", properties.id));
+            return {
+              color: isSelected ? "#0f172a" : "#0f766e",
+              weight: isSelected ? 3.5 : 0.7,
+              dashArray: isSelected ? "7 4" : undefined,
+              fillColor: densityColors[properties?.density_band || ""] || "#99f6e4",
+              fillOpacity: isSelected ? 0.62 : 0.34,
+            };
+          }}
+          onEachFeature={featureEvents(
+            "population",
+            props.onFeatureSelect,
+            (feature) => `Kepadatan ${densityLabels[String(feature.properties.density_band)] || feature.properties.density_band}`,
+          )}
         />
       )}
       {props.context && props.layers.routes && (
         <GeoJSON
-          key={`routes-${props.context.existing_routes.features.length}`}
+          key={`routes-${props.context.existing_routes.features.map((feature) => feature.properties.id).join("-")}-${selectionKey}`}
           data={props.context.existing_routes as never}
-          style={{ color: "#64748b", weight: 3, opacity: 0.75 }}
+          style={(feature) => {
+            const id = String(feature?.properties?.id || "");
+            const isSelected = selected("existing_route", id);
+            return {
+              color: isSelected ? "#0f172a" : "#64748b",
+              weight: isSelected ? 7 : 3,
+              opacity: isSelected ? 1 : 0.75,
+              dashArray: isSelected ? "10 4" : undefined,
+            };
+          }}
+          onEachFeature={featureEvents(
+            "existing_route",
+            props.onFeatureSelect,
+            (feature) => `${feature.properties.name} · ${feature.properties.route_type}`,
+          )}
         />
       )}
       {props.context && props.layers.property && (
         <GeoJSON
-          key={`property-${props.context.property_go.features.length}`}
+          key={`property-${props.context.property_go.features.map((feature) => feature.properties.id).join("-")}-${selectionKey}`}
           data={props.context.property_go as never}
-          pointToLayer={(_, latlng) => L.circleMarker(latlng, {
-            radius: 5,
-            color: "#fff",
-            weight: 2,
-            fillColor: "#f59e0b",
-            fillOpacity: 1,
-          })}
+          pointToLayer={(feature, latlng) => {
+            const isSelected = selected("property_go", String(feature.properties?.id || ""));
+            return L.circleMarker(latlng, {
+              radius: isSelected ? 9 : 5,
+              color: isSelected ? "#0f172a" : "#fff",
+              weight: isSelected ? 4 : 2,
+              dashArray: isSelected ? "3 2" : undefined,
+              fillColor: "#f59e0b",
+              fillOpacity: 1,
+            });
+          }}
+          onEachFeature={featureEvents(
+            "property_go",
+            props.onFeatureSelect,
+            (feature) => `${feature.properties.label} · ${feature.properties.kategori}`,
+          )}
         />
       )}
       {props.context && props.layers.facilities && (
         <GeoJSON
-          key={`facilities-${props.context.public_facilities?.features.length || 0}`}
+          key={`facilities-${props.context.public_facilities.features.map((feature) => feature.properties.id).join("-")}-${selectionKey}`}
           data={props.context.public_facilities as never}
-          pointToLayer={(_, latlng) => L.circleMarker(latlng, {
-            radius: 6,
-            color: "#fff",
-            weight: 2,
-            fillColor: "#ef4444",
-            fillOpacity: 1,
-          })}
+          pointToLayer={(feature, latlng) => {
+            const isSelected = selected("public_facility", String(feature.properties?.id || ""));
+            return L.circleMarker(latlng, {
+              radius: isSelected ? 10 : 6,
+              color: isSelected ? "#0f172a" : "#fff",
+              weight: isSelected ? 4 : 2,
+              dashArray: isSelected ? "3 2" : undefined,
+              fillColor: "#ef4444",
+              fillOpacity: 1,
+            });
+          }}
+          onEachFeature={featureEvents(
+            "public_facility",
+            props.onFeatureSelect,
+            (feature) => `${feature.properties.label} · ${feature.properties.kategori}`,
+          )}
         />
       )}
       {props.analysis && props.layers.buffer && (

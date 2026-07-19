@@ -57,12 +57,59 @@ export type AnalysisResult = {
   recommendation: Recommendation | null;
 };
 
+export type ExistingRouteProperties = {
+  id: string;
+  name: string;
+  route_type: string;
+};
+
+export type PopulationProperties = {
+  id: string;
+  density_band: string;
+};
+
+export type PublicPointProperties = {
+  id: string;
+  kategori: string;
+  label: string;
+};
+
+export type MapFeatureKind = "existing_route" | "population" | "property_go" | "public_facility";
+
+export type SelectedFeature = {
+  kind: MapFeatureKind;
+  id: string;
+};
+
+export type SourceStatus = "demo" | "provisional" | "verified" | "unavailable";
+
+export type SourceMetadata = {
+  source_key: string;
+  dataset_name: string;
+  provider: string;
+  license: string;
+  update_date: string | null;
+  status: SourceStatus;
+  limitation: string;
+};
+
+export type MethodologyMetadata = {
+  buffer_meters: number;
+  overlap_tolerance_meters: number;
+  population_weight: number;
+  overlap_weight: number;
+  population_assumption: string;
+  target_calibration_status: SourceStatus;
+};
+
 export type MapContext = {
   study_area: Feature<{ name: string }>;
-  existing_routes: FeatureCollection<{ name: string; route_type: string }>;
-  population: FeatureCollection<{ density_band: string }>;
-  property_go: FeatureCollection<{ kategori: string }>;
-  public_facilities: FeatureCollection<{ kategori: string }>;
+  existing_routes: FeatureCollection<ExistingRouteProperties>;
+  population: FeatureCollection<PopulationProperties>;
+  property_go: FeatureCollection<PublicPointProperties>;
+  public_facilities: FeatureCollection<PublicPointProperties>;
+  sources: SourceMetadata[];
+  methodology: MethodologyMetadata;
   truncated: {
     existing_routes: boolean;
     population: boolean;
