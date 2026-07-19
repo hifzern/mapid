@@ -127,7 +127,7 @@ export default function LandingPage() {
               <span className="demo-poi-lbl" style={{ left: "29%", top: "21%" }}>Hisana</span>
               <span className="demo-poi" style={{ left: "55%", top: "55%" }} />
               <span className="demo-poi-lbl" style={{ right: "38%", bottom: "38%" }}>Saga Textile</span>
-              <button className="demo-evaluate-btn" disabled>Evaluasi</button>
+              <Link href="/workspace" className="demo-evaluate-btn">Buka workspace <ArrowRight size={12} /></Link>
             </div>
           </div>
           <div className="demo-result-card">
@@ -148,7 +148,7 @@ export default function LandingPage() {
               <div className="demo-metric-box"><span>PROPERTY</span><strong>167</strong></div>
             </div>
             <div className="demo-insight">
-              <p>Meniru hasil backend: skor komposit, populasi, overlap, dan kondisi jalan.</p>
+              <p>Simulasi skor komposit, populasi, overlap, dan Property GO.</p>
             </div>
           </div>
         </div>

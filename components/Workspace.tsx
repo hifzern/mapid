@@ -19,7 +19,7 @@ import {
   Download,
   Plus,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { AnalysisResult, Insight, LineString, MapContext } from "@/lib/types";
 
@@ -35,12 +35,6 @@ function scoreLabel(score: number) {
   if (score >= 60) return "Baik";
   if (score >= 40) return "Cukup";
   return "Perlu perbaikan";
-}
-
-function roadFeasibility(score: number): string {
-  if (score >= 80) return "Baik";
-  if (score >= 60) return "Cukup";
-  return "Perlu tinjauan";
 }
 
 // demo route for Load Demo Route
@@ -65,18 +59,30 @@ export default function Workspace() {
   const [error, setError] = useState("");
   const [mapNotice, setMapNotice] = useState("");
   const [layers, setLayers] = useState({ routes: true, population: true, property: true, facilities: true, buffer: true });
+  const analysisRequest = useRef<AbortController | null>(null);
+  const insightRequest = useRef<AbortController | null>(null);
 
   const updateRoute = useCallback((nextRoute: LineString | null) => {
+    analysisRequest.current?.abort();
+    insightRequest.current?.abort();
     setRoute(nextRoute);
     setAnalysis(null);
     setInsight(null);
+    setLoading(false);
+    setInsightLoading(false);
     setError("");
   }, []);
 
   async function analyze(nextRoute = route) {
     if (!nextRoute) return;
+    analysisRequest.current?.abort();
+    insightRequest.current?.abort();
+    const analysisController = new AbortController();
+    analysisRequest.current = analysisController;
     setLoading(true);
+    setInsightLoading(false);
     setError("");
+    setAnalysis(null);
     setInsight(null);
     let result: AnalysisResult;
     try {
@@ -84,45 +90,55 @@ export default function Workspace() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ route: nextRoute }),
+        signal: analysisController.signal,
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Analisis gagal dijalankan.");
+      if (analysisRequest.current !== analysisController) return;
       result = payload;
       setAnalysis(payload);
     } catch (caught) {
+      if ((caught as Error).name === "AbortError") return;
       setError(caught instanceof Error ? caught.message : "Analisis gagal dijalankan.");
-      setLoading(false);
       return;
+    } finally {
+      if (analysisRequest.current === analysisController) {
+        analysisRequest.current = null;
+        setLoading(false);
+      }
     }
-    setLoading(false);
 
+    const insightController = new AbortController();
+    insightRequest.current = insightController;
     setInsightLoading(true);
     try {
       const insightResponse = await fetch("/api/insight", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(result),
+        signal: insightController.signal,
       });
       const narrative = await insightResponse.json();
-      if (insightResponse.ok) setInsight(narrative);
-    } catch {
+      if (insightResponse.ok && insightRequest.current === insightController) setInsight(narrative);
+    } catch (caught) {
+      if ((caught as Error).name !== "AbortError") setInsight(null);
     } finally {
-      setInsightLoading(false);
+      if (insightRequest.current === insightController) {
+        insightRequest.current = null;
+        setInsightLoading(false);
+      }
     }
   }
 
   async function applyRecommendation() {
     const recommended = analysis?.recommendation?.route_geojson;
-    if (!recommended) return;
-    setRoute(recommended);
+    if (!recommended || loading) return;
+    updateRoute(recommended);
     await analyze(recommended);
   }
 
   function loadDemo() {
-    setRoute(demoRoute);
-    setAnalysis(null);
-    setInsight(null);
-    setError("");
+    updateRoute(demoRoute);
   }
 
   // Build AI paragraphs from the verified analysis data
@@ -151,18 +167,18 @@ export default function Workspace() {
             <strong>{context?.study_area.properties.name || "Bandung Corridor Study"}</strong>
             <span>Bandung Timur · Evaluasi aksesibilitas rute angkutan umum</span>
           </div>
-          <div className="scenario-tabs">
-            <button className="scenario-tab active">Scenario A</button>
-            <button className="scenario-tab">Scenario B</button>
-            <button className="scenario-add" title="Buat scenario baru"><Plus size={12} /></button>
-            <button className="scenario-duplikat">Duplikat</button>
+          <div className="scenario-tabs" aria-label="Scenario analisis">
+            <button className="scenario-tab active" aria-pressed="true">Scenario A</button>
+            <button className="scenario-tab" disabled title="Belum tersedia pada prototype">Scenario B</button>
+            <button className="scenario-add" disabled title="Belum tersedia pada prototype" aria-label="Tambah scenario, belum tersedia"><Plus size={12} /></button>
+            <button className="scenario-duplikat" disabled title="Belum tersedia pada prototype">Duplikat</button>
           </div>
         </div>
         <div className="workspace-meta">
-          <span className="save-state"><i /> Unsaved</span>
+          <span className="save-state"><i /> Sesi lokal</span>
           <span className="divider" />
-          <Link href="/#metodologi" className="header-link">Report</Link>
-          <button className="header-link"><Download size={12} /> Ekspor</button>
+          <Link href="/#metodologi" className="header-link">Metodologi</Link>
+          <button className="header-link" disabled title="Belum tersedia pada prototype"><Download size={12} /> Ekspor</button>
         </div>
       </header>
 
@@ -180,13 +196,14 @@ export default function Workspace() {
         <div className="panel-block">
           <p className="panel-kicker">TOOLS</p>
           <div className="tool-stack">
+            <p className="tool-hint">Gunakan kontrol peta untuk gambar, edit, atau hapus rute.</p>
             <div className="tool-row">
-              <button className="tool-btn">Select (V)</button>
-              <button className="tool-btn">Edit Route (E)</button>
+              <button className="tool-btn" disabled title="Gunakan kontrol edit pada peta">Select</button>
+              <button className="tool-btn" disabled title="Gunakan kontrol edit pada peta">Edit Route</button>
             </div>
             <div className="tool-row">
-              <button className="tool-btn"><Undo2 size={14} /> Undo</button>
-              <button className="tool-btn"><Redo2 size={14} /> Redo</button>
+              <button className="tool-btn" disabled title="Belum tersedia pada prototype"><Undo2 size={14} /> Undo</button>
+              <button className="tool-btn" disabled title="Belum tersedia pada prototype"><Redo2 size={14} /> Redo</button>
               <button className="tool-btn primary-btn" disabled={!route || loading} onClick={() => analyze()}>
                 {loading ? <LoaderCircle className="spin" size={14} /> : <Play size={14} fill="currentColor" />}
                 Evaluasi
@@ -228,11 +245,6 @@ export default function Workspace() {
       </aside>
 
       <section className="map-canvas" aria-label="Peta evaluasi transit">
-        <div className="map-toolbar">
-          <button title="Perbesar" onClick={() => {}}>+</button>
-          <button title="Perkecil" onClick={() => {}}>−</button>
-          <button title="Sesuaikan tampilan" onClick={() => {}}>Fit</button>
-        </div>
         <TransitMap
           route={route}
           onRouteChange={updateRoute}
@@ -254,7 +266,7 @@ export default function Workspace() {
       </section>
 
       <aside className="result-panel">
-        {!analysis && !loading && (
+        {!analysis && !loading && !error && (
           <div className="empty-result">
             <div className="empty-icon"><RouteIcon size={27} /></div>
             <p className="panel-kicker">HASIL EVALUASI</p>
@@ -289,7 +301,7 @@ export default function Workspace() {
               <div>
                 <p className="panel-kicker">ACCESSIBILITY SCORE</p>
                 <h2>Panel Hasil</h2>
-                <p style={{ margin: "2px 0 0", color: "var(--muted)", fontSize: "9px" }}>Mock Spatial Analysis</p>
+                <p style={{ margin: "2px 0 0", color: "var(--muted)", fontSize: "9px" }}>Analisis spasial PostGIS</p>
               </div>
               <span className="score-status"><i /> {scoreLabel(analysis.baseline.score)}</span>
             </div>
@@ -308,12 +320,12 @@ export default function Workspace() {
               <div className="metric-cell">
                 <div className="metric-label">POPULASI</div>
                 <div className="metric-value">{analysis.baseline.population_covered.toLocaleString("id-ID")}</div>
-                <div className="metric-unit">residents</div>
+                <div className="metric-unit">warga terjangkau</div>
               </div>
               <div className="metric-cell">
                 <div className="metric-label">PROPERTY</div>
                 <div className="metric-value">{analysis.baseline.property_go_count.toLocaleString("id-ID")}</div>
-                <div className="metric-unit">area terjangkau</div>
+                <div className="metric-unit">titik terjangkau</div>
               </div>
               <div className="metric-cell">
                 <div className="metric-label">OVERLAP</div>
@@ -323,23 +335,23 @@ export default function Workspace() {
               <div className="metric-cell">
                 <div className="metric-label">PANJANG</div>
                 <div className="metric-value">{analysis.baseline.route_length_km.toLocaleString("id-ID")}</div>
-                <div className="metric-unit">estimasi</div>
+                <div className="metric-unit">km estimasi</div>
               </div>
               <div className="metric-cell">
-                <div className="metric-label">JALAN</div>
-                <div className="metric-value">{roadFeasibility(analysis.baseline.score)}</div>
-                <div className="metric-unit">aksesibilitas</div>
+                <div className="metric-label">POPULASI/KM</div>
+                <div className="metric-value">{analysis.baseline.population_per_km.toLocaleString("id-ID")}</div>
+                <div className="metric-unit">warga per km</div>
               </div>
               <div className="metric-cell">
-                <div className="metric-label">FASILITAS</div>
-                <div className="metric-value">-</div>
-                <div className="metric-unit">sekolah + RS</div>
+                <div className="metric-label">BUFFER</div>
+                <div className="metric-value">{analysis.baseline.formula.buffer_meters.toLocaleString("id-ID")}</div>
+                <div className="metric-unit">meter layanan</div>
               </div>
             </div>
 
             <div className="route-facts">
-              <span>Populasi/km <b>{analysis.baseline.population_per_km.toLocaleString("id-ID")}</b></span>
-              <span>Buffer layanan <b>{analysis.baseline.formula.buffer_meters} m</b></span>
+              <span>Target populasi/km <b>{analysis.baseline.population_per_km_target.toLocaleString("id-ID")}</b></span>
+              <span>Toleransi overlap <b>{analysis.baseline.formula.overlap_tolerance_meters} m</b></span>
             </div>
 
             <section className="ai-card">
@@ -348,9 +360,14 @@ export default function Workspace() {
               {insight ? (
                 <div className="ai-content">
                   {insight.summary.split(". ").filter(Boolean).map((s, i) => (
-                    <p key={i} className="ai-paragraph">{s}.</p>
+                    <p key={i} className="ai-paragraph">{s}{s.endsWith(".") ? "" : "."}</p>
                   ))}
-                  {insight.source === "template" && <small>Narasi fallback deterministik</small>}
+                  {insight.actions.length > 0 && (
+                    <ul className="ai-actions" aria-label="Rekomendasi tindakan">
+                      {insight.actions.map((action) => <li key={action}>{action}</li>)}
+                    </ul>
+                  )}
+                  <small>{insight.source === "ai" ? "Narasi AI dari data terverifikasi" : "Narasi fallback deterministik"}</small>
                 </div>
               ) : analysis && !insightLoading ? (
                 <div className="ai-content">
@@ -370,15 +387,15 @@ export default function Workspace() {
                   <span>Skor <b>+{analysis.recommendation.score_delta}</b></span>
                   <span>Populasi/km <b>+{analysis.recommendation.population_per_km_delta.toLocaleString("id-ID")}</b></span>
                 </div>
-                <button className="apply-button" onClick={applyRecommendation}><Check size={17} /> Terapkan Rekomendasi</button>
+                <button className="apply-button" disabled={loading} onClick={applyRecommendation}><Check size={17} /> Terapkan Rekomendasi</button>
               </section>
             ) : (
               <section className="no-recommendation"><Check size={17} /><span><b>Alignment saat ini paling kuat</b>Tidak ada pergeseran teruji yang meningkatkan skor.</span></section>
             )}
 
             <div className="action-row">
-              <button className="secondary-action"><GitCompareArrows size={14} /> Bandingkan Rute</button>
-              <button className="secondary-action"><FileText size={14} /> Ekspor Report</button>
+              <button className="secondary-action" disabled title="Belum tersedia pada prototype"><GitCompareArrows size={14} /> Bandingkan Rute</button>
+              <button className="secondary-action" disabled title="Belum tersedia pada prototype"><FileText size={14} /> Ekspor Report</button>
             </div>
           </div>
         )}

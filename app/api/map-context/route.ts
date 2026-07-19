@@ -12,6 +12,14 @@ export async function GET(request: Request) {
       { status: 400 },
     );
   }
+  const [west, south, east, north] = bbox;
+  if (west < -180 || east > 180 || south < -90 || north > 90
+    || west >= east || south >= north || east - west > 5 || north - south > 5) {
+    return NextResponse.json(
+      { error: "Batas peta di luar cakupan yang diizinkan." },
+      { status: 400 },
+    );
+  }
 
   try {
     return NextResponse.json(
