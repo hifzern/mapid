@@ -200,10 +200,12 @@ function featureEvents(
   kind: MapFeatureKind,
   onFeatureSelect: Props["onFeatureSelect"],
   tooltip: (feature: Feature) => string,
+  isSelected: (id: string) => boolean,
 ) {
   return (rawFeature: GeoJSON.Feature, layer: L.Layer) => {
     const feature = rawFeature as unknown as Feature<{ id: string }>;
-    layer.bindTooltip(tooltip(feature), { sticky: true, direction: "top" });
+    const selected = isSelected(feature.properties.id);
+    layer.bindTooltip(tooltip(feature), { sticky: !selected, permanent: selected, direction: "top" });
     layer.on("click", () => onFeatureSelect({ kind, id: feature.properties.id }));
   };
 }
@@ -216,7 +218,7 @@ export default function TransitMap(props: Props) {
   const selectionKey = props.selectedFeature ? `${props.selectedFeature.kind}-${props.selectedFeature.id}` : "none";
 
   return (
-    <MapContainer center={[-2.5, 118]} zoom={5} minZoom={4} className="leaflet-map" zoomControl={false}>
+    <MapContainer center={[-6.2, 106.82]} zoom={12} minZoom={4} className="leaflet-map" zoomControl={false}>
       {tileUrl && (
         <TileLayer
           url={tileUrl}
@@ -244,6 +246,7 @@ export default function TransitMap(props: Props) {
             const properties = feature?.properties as { id?: string; density_band?: string } | undefined;
             const isSelected = Boolean(properties?.id && selected("population", properties.id));
             return {
+              className: `map-feature map-feature-population${isSelected ? " map-feature-selected" : ""}`,
               color: isSelected ? "#0f172a" : "#0f766e",
               weight: isSelected ? 3.5 : 0.7,
               dashArray: isSelected ? "7 4" : undefined,
@@ -255,6 +258,7 @@ export default function TransitMap(props: Props) {
             "population",
             props.onFeatureSelect,
             (feature) => `Kepadatan ${densityLabels[String(feature.properties.density_band)] || feature.properties.density_band}`,
+            (id) => selected("population", id),
           )}
         />
       )}
@@ -266,6 +270,7 @@ export default function TransitMap(props: Props) {
             const id = String(feature?.properties?.id || "");
             const isSelected = selected("existing_route", id);
             return {
+              className: `map-feature map-feature-existing-route${isSelected ? " map-feature-selected" : ""}`,
               color: isSelected ? "#0f172a" : "#64748b",
               weight: isSelected ? 7 : 3,
               opacity: isSelected ? 1 : 0.75,
@@ -276,6 +281,7 @@ export default function TransitMap(props: Props) {
             "existing_route",
             props.onFeatureSelect,
             (feature) => `${feature.properties.name} · ${feature.properties.route_type}`,
+            (id) => selected("existing_route", id),
           )}
         />
       )}
@@ -286,6 +292,7 @@ export default function TransitMap(props: Props) {
           pointToLayer={(feature, latlng) => {
             const isSelected = selected("property_go", String(feature.properties?.id || ""));
             return L.circleMarker(latlng, {
+              className: `map-feature map-feature-property-go${isSelected ? " map-feature-selected" : ""}`,
               radius: isSelected ? 9 : 5,
               color: isSelected ? "#0f172a" : "#fff",
               weight: isSelected ? 4 : 2,
@@ -298,6 +305,7 @@ export default function TransitMap(props: Props) {
             "property_go",
             props.onFeatureSelect,
             (feature) => `${feature.properties.label} · ${feature.properties.kategori}`,
+            (id) => selected("property_go", id),
           )}
         />
       )}
@@ -308,6 +316,7 @@ export default function TransitMap(props: Props) {
           pointToLayer={(feature, latlng) => {
             const isSelected = selected("public_facility", String(feature.properties?.id || ""));
             return L.circleMarker(latlng, {
+              className: `map-feature map-feature-public-facility${isSelected ? " map-feature-selected" : ""}`,
               radius: isSelected ? 10 : 6,
               color: isSelected ? "#0f172a" : "#fff",
               weight: isSelected ? 4 : 2,
@@ -320,6 +329,7 @@ export default function TransitMap(props: Props) {
             "public_facility",
             props.onFeatureSelect,
             (feature) => `${feature.properties.label} · ${feature.properties.kategori}`,
+            (id) => selected("public_facility", id),
           )}
         />
       )}

@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { AnalysisResult, Insight, LineString, MapContext } from "@/lib/types";
+import type { AnalysisResult, Insight, LineString, MapContext, SelectedFeature } from "@/lib/types";
 
 const TransitMap = dynamic(() => import("./TransitMap"), {
   ssr: false,
@@ -58,6 +58,8 @@ export default function Workspace() {
   const [insightLoading, setInsightLoading] = useState(false);
   const [error, setError] = useState("");
   const [mapNotice, setMapNotice] = useState("");
+  const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
+  const [focusRequest, setFocusRequest] = useState<(SelectedFeature & { nonce: number }) | null>(null);
   const [layers, setLayers] = useState({ routes: true, population: true, property: true, facilities: true, buffer: true });
   const analysisRequest = useRef<AbortController | null>(null);
   const insightRequest = useRef<AbortController | null>(null);
@@ -139,6 +141,12 @@ export default function Workspace() {
 
   function loadDemo() {
     updateRoute(demoRoute);
+  }
+
+  function selectFeature(feature: SelectedFeature) {
+    // ponytail: Keep inspection in the map; add a persistent attribute panel only when Figma defines one.
+    setSelectedFeature(feature);
+    setFocusRequest({ ...feature, nonce: Date.now() });
   }
 
   // Build AI paragraphs from the verified analysis data
@@ -253,6 +261,9 @@ export default function Workspace() {
           onNotice={setMapNotice}
           analysis={analysis}
           layers={layers}
+          selectedFeature={selectedFeature}
+          onFeatureSelect={selectFeature}
+          focusRequest={focusRequest}
         />
         <div className="map-legend-box">
           <span className="map-legend-title">Legenda</span>
