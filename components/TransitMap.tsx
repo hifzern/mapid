@@ -218,7 +218,7 @@ const TransitMap = forwardRef<HTMLDivElement, Props>(function TransitMap(props, 
   const selectionKey = props.selectedFeature ? `${props.selectedFeature.kind}-${props.selectedFeature.id}` : "none";
 
   return (
-    <MapContainer center={[-6.2, 106.82]} zoom={12} minZoom={4} className="leaflet-map" zoomControl={false}>
+    <MapContainer center={[-7.85, 110.16]} zoom={13} minZoom={4} className="leaflet-map" zoomControl={false}>
       {tileUrl && (
         <TileLayer
           url={tileUrl}
