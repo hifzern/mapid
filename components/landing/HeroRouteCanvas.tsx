@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import Lenis from "lenis";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -11,6 +12,11 @@ export default function HeroRouteCanvas() {
   const stationRefs = useRef<(SVGCircleElement | null)[]>([]);
 
   useEffect(() => {
+    const lenis = new Lenis({ duration: 1.15, smoothWheel: true, wheelMultiplier: 0.9 });
+    lenis.on("scroll", ScrollTrigger.update);
+    gsap.ticker.add((time) => lenis.raf(time * 1000));
+    gsap.ticker.lagSmoothing(0);
+
     const path = pathRef.current;
     const stations = stationRefs.current.filter(Boolean);
     if (!path) return;
@@ -33,6 +39,8 @@ export default function HeroRouteCanvas() {
 
     return () => {
       tl.kill();
+      lenis.destroy();
+      gsap.ticker.lagSmoothing(1);
     };
   }, []);
 
@@ -55,12 +63,12 @@ export default function HeroRouteCanvas() {
       }} />
       <svg
         viewBox="0 0 100 560"
-        preserveAspectRatio="none"
         style={{
           position: "absolute",
           left: "50%",
           transform: "translateX(-50%)",
           width: "min(1180px, 118vw)",
+          height: "100%",
           minHeight: "3600px",
           display: "block",
         }}

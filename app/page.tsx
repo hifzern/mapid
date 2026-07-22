@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import Lenis from "lenis";
 import {
   ArrowRight,
   Building2,
@@ -85,18 +84,6 @@ function SectionHeader({ eyebrow, title, body, align = "center" }: { eyebrow: st
 export default function LandingPage() {
   const [demoState, setDemoState] = useState<"empty" | "loading" | "results">("empty");
   const [demoRouteName] = useState("Cibubur Connector");
-
-  // Lenis smooth scroll
-  useEffect(() => {
-    const lenis = new Lenis({ duration: 1.15, smoothWheel: true, wheelMultiplier: 0.9 });
-    let frame = 0;
-    function raf(time: number) {
-      lenis.raf(time);
-      frame = requestAnimationFrame(raf);
-    }
-    frame = requestAnimationFrame(raf);
-    return () => { cancelAnimationFrame(frame); lenis.destroy(); };
-  }, []);
 
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
