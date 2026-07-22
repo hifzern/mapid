@@ -44,6 +44,7 @@ export type Store = {
   pointCount: number;
   routeLengthKm: number;
   routeName: string;
+progressStep: number;
 
   setActiveTool: (tool: Tool) => void;
   setRouteState: (state: RouteState) => void;
@@ -107,6 +108,7 @@ export const useStore = create<Store>((set, get) => ({
   pointCount: 0,
   routeLengthKm: 0,
   routeName: "Rute Simulasi",
+progressStep: 0,
 
   setActiveTool: (tool) => set({ activeTool: tool }),
   setRouteState: (state) => set({ routeState: state }),

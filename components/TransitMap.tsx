@@ -12,6 +12,7 @@ import type {
   MapFeatureKind,
   SelectedFeature,
 } from "@/lib/types";
+import { useStore } from "@/lib/workspace-store";
 
 type LayerVisibility = {
   routes: boolean;
@@ -55,6 +56,8 @@ const densityLabels: Record<string, string> = {
 function DrawingControl({ route, onRouteChange }: Pick<Props, "route" | "onRouteChange">) {
   const map = useMap();
   const group = useRef<L.FeatureGroup | null>(null);
+  const activeTool = useStore((s) => s.activeTool);
+  const setRouteState = useStore((s) => s.setRouteState);
 
   useEffect(() => {
     const featureGroup = new L.FeatureGroup().addTo(map);
@@ -98,6 +101,25 @@ function DrawingControl({ route, onRouteChange }: Pick<Props, "route" | "onRoute
     };
   }, [map, onRouteChange]);
 
+  // Wire activeTool → leaflet-draw
+  useEffect(() => {
+    const featureGroup = group.current;
+    if (!featureGroup) return;
+
+    // Disable all editing
+    featureGroup.eachLayer((layer) => {
+      const poly = layer as L.Polyline & { editing?: { disable: () => void; enable: () => void } };
+      if (poly.editing) poly.editing.disable();
+    });
+
+    if (activeTool === "edit") {
+      featureGroup.eachLayer((layer) => {
+        const poly = layer as L.Polyline & { editing?: { disable: () => void; enable: () => void } };
+        if (poly.editing) poly.editing.enable();
+      });
+    }
+  }, [activeTool]);
+
   useEffect(() => {
     const featureGroup = group.current;
     if (!featureGroup) return;
@@ -106,8 +128,11 @@ function DrawingControl({ route, onRouteChange }: Pick<Props, "route" | "onRoute
     if (route && current?.type === "LineString"
       && JSON.stringify(current.coordinates) === JSON.stringify(route.coordinates)) return;
     featureGroup.clearLayers();
-    if (route) featureGroup.addLayer(L.geoJSON(route, { style: { color: "#2563eb", weight: 5 } }));
-  }, [route]);
+    if (route) {
+      featureGroup.addLayer(L.geoJSON(route, { style: { color: "#2563eb", weight: 5 } }));
+      setRouteState("ready");
+    }
+  }, [route, setRouteState]);
 
   return null;
 }
@@ -169,13 +194,13 @@ function ContextLoader({ onContext, onNotice }: Pick<Props, "onContext" | "onNot
 }
 
 function findFeature(context: MapContext, selected: SelectedFeature): Feature | undefined {
-  const collections = {
+  const collections: Record<string, { features: Feature[] }> = {
     existing_route: context.existing_routes,
     population: context.population,
     property_go: context.property_go,
     public_facility: context.public_facilities,
   };
-  return collections[selected.kind].features.find((feature) => feature.properties.id === selected.id) as Feature | undefined;
+  return collections[selected.kind]?.features.find((feature) => feature.properties.id === selected.id) as Feature | undefined;
 }
 
 function MapFocus({ context, focusRequest }: Pick<Props, "context" | "focusRequest">) {
@@ -210,6 +235,35 @@ function featureEvents(
   };
 }
 
+function FallbackMap() {
+  return (
+    <div className="fallback-overlay">
+      <svg viewBox="0 0 800 600" className="fallback-svg" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <pattern id="fgrid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M40 0L0 0 0 40" fill="none" stroke="#dce5e8" strokeWidth="0.5" />
+          </pattern>
+        </defs>
+        <rect width="800" height="600" fill="url(#fgrid)" />
+        <path d="M0 280 Q200 260 400 300 T800 260" fill="none" stroke="#b0c4d0" strokeWidth="6" strokeLinecap="round" />
+        <path d="M0 380 Q250 370 500 390 T800 360" fill="none" stroke="#b0c4d0" strokeWidth="4" strokeLinecap="round" />
+        <path d="M350 0 L370 600" fill="none" stroke="#b0c4d0" strokeWidth="3" strokeLinecap="round" />
+        <text x="160" y="270" fill="#64748b" fontSize="9" fontFamily="Inter, sans-serif">JALAN WATES</text>
+        <text x="160" y="370" fill="#64748b" fontSize="9" fontFamily="Inter, sans-serif">JALAN SELATAN</text>
+        <circle cx="370" cy="300" r="5" fill="#f59e0b" />
+        <text x="376" y="303" fill="#0f172a" fontSize="8" fontFamily="Inter, sans-serif">Pasar Wates</text>
+        <circle cx="280" cy="240" r="5" fill="#ef4444" />
+        <text x="286" y="243" fill="#0f172a" fontSize="8" fontFamily="Inter, sans-serif">RS Wates</text>
+      </svg>
+      <div className="fallback-card">
+        <strong>MAPID tile belum dikonfigurasi</strong>
+        <p>Atur <code>NEXT_PUBLIC_MAPID_TILE_URL</code> di .env untuk menampilkan peta.</p>
+        <span>Pan, zoom, dan drawing tetap berfungsi.</span>
+      </div>
+    </div>
+  );
+}
+
 const TransitMap = forwardRef<HTMLDivElement, Props>(function TransitMap(props, _ref) {
   const tileUrl = process.env.NEXT_PUBLIC_MAPID_TILE_URL;
   const selected = (kind: MapFeatureKind, id: string) => (
@@ -219,11 +273,13 @@ const TransitMap = forwardRef<HTMLDivElement, Props>(function TransitMap(props, 
 
   return (
     <MapContainer center={[-7.85, 110.16]} zoom={13} minZoom={4} className="leaflet-map" zoomControl={false}>
-      {tileUrl && (
+      {tileUrl ? (
         <TileLayer
           url={tileUrl}
           attribution={process.env.NEXT_PUBLIC_MAPID_ATTRIBUTION || "MAPID MAPS"}
         />
+      ) : (
+        <FallbackMap />
       )}
       <ContextLoader onContext={props.onContext} onNotice={props.onNotice} />
       <MapToolbar route={props.route} context={props.context} />
@@ -347,7 +403,6 @@ const TransitMap = forwardRef<HTMLDivElement, Props>(function TransitMap(props, 
           style={{ color: "#14b8a6", weight: 5, dashArray: "9 8" }}
         />
       )}
-      {!tileUrl && <div className="missing-basemap">Tambahkan URL tile MAPID MAPS di <code>.env</code></div>}
     </MapContainer>
   );
 });
