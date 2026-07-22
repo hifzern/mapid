@@ -22,7 +22,7 @@ import {
   Hand,
   Pencil,
 } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { AnalysisResult, LineString } from "@/lib/types";
 import { useStore } from "@/lib/workspace-store";
@@ -53,17 +53,19 @@ function roadFeasibility(score: number): string {
 const demoRoute: LineString = {
   type: "LineString",
   coordinates: [
-    [106.8, -6.2],
-    [106.805, -6.205],
-    [106.81, -6.21],
-    [106.815, -6.215],
-    [106.82, -6.22],
+    [110.07, -7.87],
+    [110.10, -7.86],
+    [110.14, -7.86],
+    [110.16, -7.86],
+    [110.20, -7.87],
+    [110.23, -7.88],
   ],
 };
 
 export default function Workspace() {
   const store = useStore();
   const mapRef = useRef<HTMLDivElement>(null);
+  const [showExport, setShowExport] = useState(false);
 
   const analyze = useCallback(async (nextRoute = store.route) => {
     if (!nextRoute) return;
@@ -201,7 +203,7 @@ export default function Workspace() {
           <span className="save-state"><i /> {analysis ? "Saved" : "Unsaved"}</span>
           <span className="divider" />
           <Link href="/#metodologi" className="header-link">Report</Link>
-          <button className="header-link"><Download size={12} /> Ekspor</button>
+          <button className="header-link" onClick={() => setShowExport(true)}><Download size={12} /> Ekspor</button>
         </div>
       </header>
 
@@ -210,9 +212,15 @@ export default function Workspace() {
           <p className="panel-kicker">PROJECT</p>
           <div className="project-info">
             <RouteIcon size={17} />
-            <h3>Bandung Corridor Study</h3>
+            <h3>Kab. Kulonprogo</h3>
           </div>
-          <span className="project-loc">Bandung Timur</span>
+          <span className="project-loc">DIY Yogyakarta</span>
+          <input
+            className="route-name-input"
+            value={store.routeName}
+            onChange={(e) => store.setRouteName(e.target.value)}
+            placeholder="Nama rute"
+          />
           <button className="load-demo-btn" onClick={loadDemo}><Play size={12} /> Load Demo Route</button>
         </div>
 
@@ -296,7 +304,7 @@ export default function Workspace() {
         <TransitMap
           ref={mapRef}
           route={route}
-          onRouteChange={store.setRoute}
+          onRouteChange={store.pushRouteHistory}
           context={context}
           onContext={store.setContext}
           onNotice={store.setMapNotice}
@@ -415,6 +423,44 @@ export default function Workspace() {
               <span>Buffer layanan <b>{analysis.baseline.formula.buffer_meters} m</b></span>
             </div>
 
+            {analysis.recommendation && (
+              <section className="comparison-section">
+                <p className="panel-kicker">PERBANDINGAN RUTE</p>
+                <h3>Baseline vs Rekomendasi</h3>
+                <table className="compact-table">
+                  <thead>
+                    <tr>
+                      <th>Metrik</th>
+                      <th style={{ textAlign: "right" }}>Baseline</th>
+                      <th style={{ textAlign: "right" }}>Rekomendasi</th>
+                      <th style={{ textAlign: "right" }}>Delta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { label: "Skor", base: analysis.baseline.score, rec: analysis.recommendation.result.score, unit: "", fmt: (v: number) => Math.round(v).toString() },
+                      { label: "Populasi", base: analysis.baseline.population_covered, rec: analysis.recommendation.result.population_covered, unit: "jiwa", fmt: (v: number) => v.toLocaleString("id-ID") },
+                      { label: "Overlap", base: analysis.baseline.overlap_pct, rec: analysis.recommendation.result.overlap_pct, unit: "%", fmt: (v: number) => `${v}%` },
+                      { label: "Panjang", base: analysis.baseline.route_length_km, rec: analysis.recommendation.result.route_length_km, unit: "km", fmt: (v: number) => `${v.toLocaleString("id-ID")} km` },
+                      { label: "Property", base: analysis.baseline.property_go_count, rec: analysis.recommendation.result.property_go_count, unit: "", fmt: (v: number) => v.toLocaleString("id-ID") },
+                    ].map(({ label, base, rec, fmt }) => {
+                      const delta = rec - base;
+                      return (
+                        <tr key={label}>
+                          <td>{label}</td>
+                          <td>{fmt(base)}</td>
+                          <td>{fmt(rec)}</td>
+                          <td className={delta >= 0 ? "delta-pos" : "delta-neg"}>
+                            {delta > 0 ? "+" : ""}{fmt(Math.abs(delta))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </section>
+            )}
+
             <section className="ai-card">
               <div className="ai-title"><span><Sparkles size={16} /></span><div><strong>AI Planning Insight</strong><small>berdasarkan hasil PostGIS</small></div></div>
               {insightLoading && <p className="ai-loading"><LoaderCircle className="spin" size={16} /> Menyusun insight terverifikasi…</p>}
@@ -480,6 +526,30 @@ export default function Workspace() {
           <span>Analisis sinkron</span>
         </span>
       </footer>
+
+      {showExport && (
+        <div className="modal-overlay" onClick={() => setShowExport(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Ekspor Hasil</h3>
+            <p>Pilih format untuk mengekspor hasil evaluasi rute ini.</p>
+            <div className="modal-options">
+              <div className="modal-option" onClick={() => { store.addToast("PDF simulation — fitur akan datang", "info"); setShowExport(false); }}>
+                <FileText size={20} />
+                <div>PDF Report<small>Laporan lengkap dengan peta dan metrik</small></div>
+              </div>
+              <div className="modal-option" onClick={() => { store.addToast("Image simulation — fitur akan datang", "info"); setShowExport(false); }}>
+                <Download size={20} />
+                <div>Map Image<small>Snapshot peta dengan legenda (PNG)</small></div>
+              </div>
+              <div className="modal-option" onClick={() => { navigator.clipboard.writeText(window.location.href); store.addToast("Link disalin!", "success"); setShowExport(false); }}>
+                <GitCompareArrows size={20} />
+                <div>Share Link<small>Salin tautan ke clipboard</small></div>
+              </div>
+            </div>
+            <button className="modal-close" onClick={() => setShowExport(false)}>Tutup</button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

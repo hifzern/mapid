@@ -43,9 +43,11 @@ export type Store = {
   settings: AppSettings;
   pointCount: number;
   routeLengthKm: number;
+  routeName: string;
 
   setActiveTool: (tool: Tool) => void;
   setRouteState: (state: RouteState) => void;
+  setRouteName: (name: string) => void;
   setRoute: (route: LineString | null) => void;
   pushRouteHistory: (route: LineString | null) => void;
   undo: () => void;
@@ -104,9 +106,11 @@ export const useStore = create<Store>((set, get) => ({
   settings: { bufferRadius: 500, priority: "balanced" },
   pointCount: 0,
   routeLengthKm: 0,
+  routeName: "Rute Simulasi",
 
   setActiveTool: (tool) => set({ activeTool: tool }),
   setRouteState: (state) => set({ routeState: state }),
+  setRouteName: (name) => set({ routeName: name }),
 
   setRoute: (route) => {
     set({ route, routeState: route ? "ready" : "idle", analysis: null, insight: null, error: "" });

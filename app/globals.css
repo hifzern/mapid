@@ -323,6 +323,34 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .workspace-status i.online { background: #16a34a; }
 .workspace-status .stat-divider { width: 1px; height: 12px; background: var(--line); }
 .workspace-status .tool-indicator { color: var(--teal); font-weight: 650; font-family: var(--font-metric); font-size: 8px; letter-spacing: .06em; }
+/* Route name */
+.route-name-input { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; font-weight: 650; color: var(--ink); background: #fff; margin-bottom: 8px; }
+.route-name-input:focus { border-color: var(--teal); outline: none; }
+
+/* Comparison table */
+.comparison-section { margin-top: 16px; }
+.comparison-section h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: -.02em; }
+.compact-table { width: 100%; border-collapse: collapse; font-size: 9px; }
+.compact-table th { text-align: left; color: var(--muted); font-weight: 650; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.compact-table td { padding: 8px; border-bottom: 1px solid var(--line); }
+.compact-table td:first-child { color: var(--muted); font-weight: 600; }
+.compact-table td:not(:first-child) { font-family: var(--font-metric); font-weight: 700; text-align: right; }
+.compact-table .delta-pos { color: var(--green-text); }
+.compact-table .delta-neg { color: #dc2626; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; z-index: 9998; display: grid; place-items: center; background: rgba(15,23,42,.5); animation: fade-in .15s ease-out; }
+.modal { background: #fff; border-radius: 14px; padding: 28px; width: 90%; max-width: 380px; box-shadow: 0 25px 60px rgba(15,23,42,.18); }
+.modal h3 { margin: 0 0 6px; font-size: 18px; }
+.modal > p { margin: 0 0 20px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.modal-options { display: grid; gap: 8px; }
+.modal-option { padding: 12px 14px; display: flex; align-items: center; gap: 12px; background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 650; color: var(--ink); }
+.modal-option:hover { border-color: var(--teal); }
+.modal-option svg { color: var(--teal); }
+.modal-option small { color: var(--muted); font-weight: 400; font-size: 10px; display: block; margin-top: 2px; }
+.modal-close { margin-top: 14px; width: 100%; height: 36px; display: flex; align-items: center; justify-content: center; color: var(--muted); background: #fff; border: 1px solid var(--line); border-radius: 7px; font-size: 11px; font-weight: 650; cursor: pointer; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
 .spin { animation: spin .8s linear infinite; }
 
 /* Toast */
