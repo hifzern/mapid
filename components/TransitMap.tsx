@@ -2,7 +2,7 @@
 
 import L from "leaflet";
 import "leaflet-draw";
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useRef } from "react";
 import { GeoJSON, MapContainer, TileLayer, useMap } from "react-leaflet";
 import type {
   AnalysisResult,
@@ -210,7 +210,7 @@ function featureEvents(
   };
 }
 
-export default function TransitMap(props: Props) {
+const TransitMap = forwardRef<HTMLDivElement, Props>(function TransitMap(props, _ref) {
   const tileUrl = process.env.NEXT_PUBLIC_MAPID_TILE_URL;
   const selected = (kind: MapFeatureKind, id: string) => (
     props.selectedFeature?.kind === kind && props.selectedFeature.id === id
@@ -350,4 +350,6 @@ export default function TransitMap(props: Props) {
       {!tileUrl && <div className="missing-basemap">Tambahkan URL tile MAPID MAPS di <code>.env</code></div>}
     </MapContainer>
   );
-}
+});
+
+export default TransitMap;
