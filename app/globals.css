@@ -254,6 +254,13 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .leaflet-control-zoom a { background: #fff !important; color: var(--ink) !important; }
 .leaflet-draw-toolbar a { background-color: #fff; }
 .map-loading { display: grid; place-items: center; align-content: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.fallback-overlay { position: absolute; inset: 0; z-index: 500; pointer-events: none; }
+.fallback-overlay svg { width: 100%; height: 100%; display: block; }
+.fallback-card { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 1000; padding: 12px 16px; text-align: center; pointer-events: auto; background: rgba(255,255,255,.96); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(15,23,42,.1); }
+.fallback-card strong { display: block; font-size: 11px; margin-bottom: 4px; }
+.fallback-card p { margin: 0; color: var(--muted); font-size: 9px; }
+.fallback-card code { font-family: var(--font-metric); font-size: 8px; background: var(--teal-pale); padding: 1px 4px; border-radius: 3px; }
+.fallback-card span { display: block; margin-top: 5px; color: var(--muted); font-size: 8px; font-style: italic; }
 .missing-basemap { position: absolute; left: 50%; top: 14px; z-index: 1000; transform: translateX(-50%); padding: 8px 12px; color: #7c2d12; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; font-size: 10px; white-space: nowrap; }
 
 /* Map toolbar – Figma: +/-/Fit overlay */

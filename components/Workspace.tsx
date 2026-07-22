@@ -69,6 +69,17 @@ export default function Workspace() {
 
   const analyze = useCallback(async (nextRoute = store.route) => {
     if (!nextRoute) return;
+    // Frontend validation
+    if (nextRoute.coordinates.length < 2) {
+      store.addToast("Rute minimal 2 titik", "error");
+      return;
+    }
+    if (store.routeLengthKm < 0.01) {
+      store.addToast("Rute terlalu pendek (min 10 m)", "error");
+      return;
+    }
+    // Reset & start progress
+    useStore.setState({ progressStep: 0 });
     store.setLoading(true);
     store.setRouteState("analyzing");
     store.setError("");
@@ -121,6 +132,27 @@ export default function Workspace() {
     store.pushRouteHistory(demoRoute);
     store.addToast("Demo route dimuat", "success");
   }, [store]);
+
+  // Animated progress
+  const progressStep = useStore((s) => s.progressStep);
+  const isLoading = useStore((s) => s.loading);
+  const routeStateVal = useStore((s) => s.routeState);
+  useEffect(() => {
+    if (!isLoading && routeStateVal !== "analyzing") {
+      useStore.setState({ progressStep: 0 });
+      return;
+    }
+    const steps = 6;
+    const tick = setInterval(() => {
+      const current = useStore.getState().progressStep;
+      if (current < steps) {
+        useStore.setState({ progressStep: current + 1 });
+      } else {
+        clearInterval(tick);
+      }
+    }, 400);
+    return () => clearInterval(tick);
+  }, [isLoading, routeStateVal]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -345,14 +377,18 @@ export default function Workspace() {
             <LoaderCircle className="spin" size={28} />
             <h2>Menganalisis konteks rute…</h2>
             <div style={{ textAlign: "left", maxWidth: "260px", marginTop: "12px", display: "grid", gap: "6px" }}>
-              {["Memvalidasi geometri rute", "Membentuk buffer 500 m", "Menghitung cakupan populasi", "Mendeteksi overlap existing", "Menguji 16 alternatif alignment", "Menyusun hasil evaluasi"].map((step, i) => (
-                <div key={step} style={{ display: "flex", alignItems: "center", gap: "8px", color: i < 5 ? "var(--teal)" : "var(--muted)", fontSize: "9px" }}>
-                  <span style={{ width: "14px", height: "14px", display: "grid", placeItems: "center", background: i < 5 ? "var(--teal-pale)" : "transparent", borderRadius: "50%", fontSize: "8px", fontWeight: 800, color: i < 5 ? "var(--teal)" : "var(--muted)" }}>
-                    {i < 5 ? <Check size={10} /> : i + 1}
-                  </span>
-                  {step}
-                </div>
-              ))}
+              {["Memvalidasi geometri rute", "Membentuk buffer 500 m", "Menghitung cakupan populasi", "Mendeteksi overlap existing", "Menguji 16 alternatif alignment", "Menyusun hasil evaluasi"].map((step, i) => {
+                const done = i < progressStep;
+                const active = i === progressStep;
+                return (
+                  <div key={step} style={{ display: "flex", alignItems: "center", gap: "8px", color: done ? "var(--teal)" : active ? "var(--ink)" : "var(--muted)", fontSize: "9px", transition: "color .2s" }}>
+                    <span style={{ width: "14px", height: "14px", display: "grid", placeItems: "center", background: done ? "var(--teal-pale)" : active ? "var(--teal)" : "transparent", borderRadius: "50%", fontSize: "8px", fontWeight: 800, color: done ? "var(--teal)" : active ? "#fff" : "var(--muted)", transition: "background .2s" }}>
+                      {done ? <Check size={10} /> : i + 1}
+                    </span>
+                    {step}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
