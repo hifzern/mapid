@@ -1,233 +1,517 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import Lenis from "lenis";
 import {
   ArrowRight,
-  Database,
+  Building2,
+  CircuitBoard,
+  FileText,
+  HelpCircle,
+  Layers3,
+  LoaderCircle,
   Map,
   Route,
   Sparkles,
+  UsersRound,
 } from "lucide-react";
+import HeroRouteCanvas from "@/components/landing/HeroRouteCanvas";
+import DemoMap from "@/components/landing/DemoMap";
+
+const howItWorks = [
+  { title: "Pilih Layer", body: "Aktifkan rute existing, kepadatan penduduk, Property GO, dan batas admin." },
+  { title: "Gambar Rute", body: "Buat rute simulasi titik demi titik atau freehand di atas peta." },
+  { title: "Hitung Spasial", body: "Sistem membuat buffer 500m, overlay data, dan mencari alternatif rute." },
+  { title: "Bandingkan Hasil", body: "Lihat skor, breakdown metrik, insight AI, dan rekomendasi aksi." },
+];
+
+const dataSources = [
+  { title: "MAPID Maps", body: "Basemap untuk membaca jaringan jalan dan wilayah studi.", icon: Map },
+  { title: "Property GO", body: "Indikasi titik aktivitas, properti komersial, dan potensi tujuan perjalanan.", icon: Building2 },
+  { title: "Data Populasi", body: "Menghitung estimasi warga dalam buffer layanan 500m.", icon: UsersRound },
+  { title: "Batas Administrasi", body: "Membatasi analisis pada wilayah studi yang terverifikasi.", icon: Layers3 },
+];
+
+const methodologyItems = ["Buffer 500m", "Overlay Populasi", "Overlap Rute Existing", "Aksesibilitas Jalan", "Grid-search Alternatif"];
+
+const faqItems = [
+  { q: "Apa maksud buffer 500m?", a: "Area layanan berjalan kaki di sekitar rute untuk estimasi cakupan populasi dan titik aktivitas." },
+  { q: "Apakah AI mengarang angka spasial?", a: "Tidak. PostGIS menghitung semua metrik. AI hanya menerima nilai terverifikasi dan menyusunnya menjadi narasi." },
+  { q: "Apa yang dibandingkan sistem?", a: "Cakupan populasi per km, overlap dengan rute existing, dan skor dari 16 alternatif pergeseran." },
+  { q: "Apakah sudah memakai backend?", a: "Landing ini memakai data tiruan. Workspace terhubung dengan PostGIS dan AI service." },
+];
+
+function SectionHeader({ eyebrow, title, body, align = "center" }: { eyebrow: string; title: string; body?: string; align?: "center" | "left" }) {
+  return (
+    <div style={{ textAlign: align, marginBottom: "48px" }}>
+      <span style={{
+        display: "inline-block",
+        marginBottom: "12px",
+        color: "var(--teal)",
+        fontFamily: "var(--font-metric)",
+        fontSize: "10px",
+        fontWeight: 800,
+        letterSpacing: "0.13em",
+        textTransform: "uppercase",
+      }}>
+        {eyebrow}
+      </span>
+      <h2 style={{
+        maxWidth: align === "center" ? "640px" : "480px",
+        margin: align === "center" ? "0 auto" : "0",
+        fontSize: "clamp(36px, 4vw, 56px)",
+        lineHeight: 1.07,
+        letterSpacing: "-0.052em",
+      }}>
+        {title}
+      </h2>
+      {body && (
+        <p style={{
+          maxWidth: "560px",
+          margin: align === "center" ? "16px auto 0" : "16px 0 0",
+          color: "#475569",
+          fontSize: "16px",
+          lineHeight: 1.65,
+        }}>
+          {body}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export default function LandingPage() {
+  const [demoState, setDemoState] = useState<"empty" | "loading" | "results">("empty");
+  const [demoRouteName] = useState("Cibubur Connector");
+
+  // Lenis smooth scroll
+  useEffect(() => {
+    const lenis = new Lenis({ duration: 1.15, smoothWheel: true, wheelMultiplier: 0.9 });
+    let frame = 0;
+    function raf(time: number) {
+      lenis.raf(time);
+      frame = requestAnimationFrame(raf);
+    }
+    frame = requestAnimationFrame(raf);
+    return () => { cancelAnimationFrame(frame); lenis.destroy(); };
+  }, []);
+
+  const scrollTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const runDemo = () => {
+    setDemoState("loading");
+    setTimeout(() => setDemoState("results"), 2300);
+  };
+
   return (
-    <main className="landing">
-      <nav className="site-nav" aria-label="Navigasi utama">
-        <Link href="/" className="brand" aria-label="TAE beranda">
-          <span className="brand-mark"><Route size={19} /></span>
-          <span>TAE</span>
-        </Link>
-        <div className="nav-links">
-          <a href="#cara-kerja">Cara kerja</a>
-          <a href="#demo">Demo</a>
-          <a href="#metodologi">Metodologi</a>
-          <a href="#faq">FAQ</a>
-        </div>
-        <Link href="/workspace" className="nav-cta">Buka workspace <ArrowRight size={16} /></Link>
-      </nav>
+    <main style={{ position: "relative", overflow: "hidden", background: "#fafbfc", color: "#0f172a", minHeight: "100vh" }}>
+      <HeroRouteCanvas />
 
-      <section className="hero">
-        <div className="hero-copy">
-          <h1>Evaluator Aksesibilitas</h1>
-          <h1 style={{ marginTop: "-0.12em" }}>Transit</h1>
-          <p>
+      {/* Mobile banner */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 50,
+        background: "#fff", borderBottom: "1px solid #e5e7eb",
+        padding: "10px 20px", textAlign: "center",
+        fontSize: "11px", color: "#475569",
+        display: "none",
+      }} className="mobile-banner">
+        Dioptimalkan untuk workflow perencanaan di desktop, laptop, dan tablet landscape.
+      </div>
+
+      {/* Hero */}
+      <section style={{ position: "relative", zIndex: 10, minHeight: "92vh" }}>
+        {/* Nav */}
+        <nav style={{
+          position: "absolute", top: "24px", left: "50%", transform: "translateX(-50%)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          width: "min(1120px, calc(100vw - 48px))", height: "52px",
+          padding: "0 20px",
+          background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)",
+          border: "1px solid #e5e7eb", borderRadius: "9999px",
+          boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
+        }}>
+          <Link href="/" style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 800, fontSize: "15px" }}>
+            <span style={{
+              width: "30px", height: "30px", display: "grid", placeItems: "center",
+              color: "#fff", background: "var(--teal)", borderRadius: "8px 8px 8px 3px",
+            }}>
+              <Route size={16} />
+            </span>
+            TAE
+          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: "24px", fontSize: "13px", fontWeight: 550, color: "#64748b" }}>
+            <a href="#how" onClick={(e) => { e.preventDefault(); scrollTo("how"); }} style={{ cursor: "pointer" }}>Cara kerja</a>
+            <a href="#demo" onClick={(e) => { e.preventDefault(); scrollTo("demo"); }} style={{ cursor: "pointer" }}>Demo</a>
+            <a href="#method" onClick={(e) => { e.preventDefault(); scrollTo("method"); }} style={{ cursor: "pointer" }}>Metodologi</a>
+            <a href="#faq" onClick={(e) => { e.preventDefault(); scrollTo("faq"); }} style={{ cursor: "pointer" }}>FAQ</a>
+          </div>
+          <Link href="/workspace" style={{
+            display: "inline-flex", alignItems: "center", gap: "6px",
+            height: "36px", padding: "0 14px",
+            color: "#64748b", background: "#fff",
+            border: "1px solid #e5e7eb", borderRadius: "9999px",
+            fontSize: "12px", fontWeight: 650,
+            boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
+          }}>
+            Masuk
+          </Link>
+        </nav>
+
+        {/* Hero text */}
+        <div style={{
+          width: "min(1120px, calc(100vw - 48px))", margin: "0 auto",
+          paddingTop: "160px", textAlign: "center", position: "relative", zIndex: 10,
+        }}>
+          {/* Blur bg */}
+          <div style={{
+            position: "absolute", top: "40%", left: "50%", transform: "translate(-50%, -50%)",
+            width: "500px", height: "500px", background: "rgba(20,184,166,0.08)",
+            borderRadius: "50%", filter: "blur(80px)", pointerEvents: "none",
+          }} />
+
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "9999px", fontSize: "11px", fontWeight: 650, color: "var(--teal)", boxShadow: "0 1px 0 rgba(15,23,42,0.06)", marginBottom: "24px" }}>
+            <Sparkles size={13} />
+            Prototipe pendukung keputusan spasial
+          </div>
+
+          <motion.h1
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: "easeOut" }}
+            style={{
+              maxWidth: "780px", margin: "0 auto",
+              fontSize: "clamp(52px, 6vw, 82px)", lineHeight: 0.98,
+              letterSpacing: "-0.067em",
+            }}
+          >
+            Evaluator Aksesibilitas Transit
+          </motion.h1>
+          <p style={{ maxWidth: "680px", margin: "24px auto 0", color: "#475569", fontSize: "18px", lineHeight: 1.68 }}>
             Evaluasi ide rute transportasi publik dengan konteks spasial, metrik yang jelas,
-            dan rekomendasi perencanaan berbasis AI menggunakan data MAPID tiruan.
+            dan rekomendasi perencanaan berbasis AI menggunakan data MAPID.
           </p>
-          <div className="hero-actions">
-            <Link href="/workspace" className="button button-primary">
-              Coba Demo <ArrowRight size={18} />
+          <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "32px" }}>
+            <button onClick={() => scrollTo("demo")} style={{
+              display: "inline-flex", alignItems: "center", gap: "8px",
+              height: "44px", padding: "0 20px",
+              color: "#fff", background: "var(--teal)",
+              border: "0", borderRadius: "12px",
+              fontSize: "13px", fontWeight: 750,
+              boxShadow: "0 18px 55px rgba(15,118,110,0.18)",
+              cursor: "pointer",
+            }}>
+              Coba Demo <ArrowRight size={16} />
+            </button>
+            <Link href="/workspace" style={{
+              display: "inline-flex", alignItems: "center", gap: "6px",
+              height: "44px", padding: "0 20px",
+              color: "#0f172a", background: "#fff",
+              border: "1px solid #e5e7eb", borderRadius: "12px",
+              fontSize: "13px", fontWeight: 650,
+              boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
+            }}>
+              Masuk
             </Link>
-            <a href="#cara-kerja" className="button button-quiet">Pelajari</a>
           </div>
-        </div>
-
-        <div className="hero-map" aria-label="Ilustrasi skematik koridor transit">
-          <div className="map-coordinate">06°12&apos;S / 106°49&apos;E</div>
-          <svg viewBox="0 0 640 560" role="img" aria-label="Rute usulan melintasi zona pelayanan">
-            <defs>
-              <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-                <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#dfe7e5" strokeWidth="1" />
-              </pattern>
-              <filter id="soft"><feGaussianBlur stdDeviation="10" /></filter>
-            </defs>
-            <rect width="640" height="560" fill="url(#grid)" />
-            <path className="map-road" d="M-20 440 C120 350 150 240 300 260 S500 330 680 100" />
-            <path className="map-road thin" d="M70 -10 C110 100 260 130 280 250 S240 460 350 580" />
-            <path className="map-road thin" d="M-20 140 C180 170 220 70 400 90 S540 240 660 240" />
-            <path className="service-zone" d="M54 435 C155 345 185 230 294 222 C403 214 475 318 585 155" />
-            <path className="route-line-shadow" d="M54 435 C155 345 185 230 294 222 C403 214 475 318 585 155" />
-            <path className="route-line" d="M54 435 C155 345 185 230 294 222 C403 214 475 318 585 155" />
-            {[[54,435],[176,316],[294,222],[429,272],[585,155]].map(([x,y], index) => (
-              <g key={index} transform={`translate(${x} ${y})`}>
-                <circle r="13" fill="#fff" stroke="#0f766e" strokeWidth="4" />
-                <circle r="4" fill="#0f766e" />
-              </g>
-            ))}
-          </svg>
         </div>
       </section>
 
-      <section id="cara-kerja" className="section process-section">
-        <div className="section-heading">
-          <div>
-            <p className="section-index">CARA KERJA</p>
-            <h2>Dari layer peta sampai rekomendasi rute.</h2>
+      {/* CTA Section */}
+      <section id="cta" className="section-shell" style={{ padding: "80px 0" }}>
+        <div style={{
+          background: "#fff", border: "1px solid #e5e7eb", borderRadius: "20px",
+          padding: "64px 56px", textAlign: "center",
+          boxShadow: "0 18px 55px rgba(15,23,42,0.08)",
+        }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "5px 10px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "9999px", fontSize: "10px", fontWeight: 700, color: "var(--teal)", boxShadow: "0 1px 0 rgba(15,23,42,0.06)", marginBottom: "20px" }}>
+            <CircuitBoard size={12} />
+            Mulai dari rute pertama
           </div>
-          <p>Pilih data, gambar rute, hitung dampak spasial, lalu bandingkan hasilnya.</p>
-        </div>
-        <div className="process-grid">
-          <article className="process-card">
-            <div className="process-top">
-              <span className="process-num">01</span>
-            </div>
-            <h3>Pilih Layer</h3>
-            <p>Aktifkan rute existing, populasi, Property GO.</p>
-          </article>
-          <article className="process-card">
-            <div className="process-top">
-              <span className="process-num">02</span>
-            </div>
-            <h3>Gambar Rute</h3>
-            <p>Buat rute simulasi titik demi titik/freehand.</p>
-          </article>
-          <article className="process-card">
-            <div className="process-top">
-              <span className="process-num">03</span>
-            </div>
-            <h3>Hitung Spasial</h3>
-            <p>Buffer 500m, overlay data, cari alternatif.</p>
-          </article>
-          <article className="process-card">
-            <div className="process-top">
-              <span className="process-num">04</span>
-            </div>
-            <h3>Bandingkan Hasil</h3>
-            <p>Skor, breakdown, insight AI, rekomendasi.</p>
-          </article>
+          <h2 style={{ maxWidth: "640px", margin: "0 auto", fontSize: "clamp(30px, 4vw, 48px)", lineHeight: 1.07, letterSpacing: "-0.05em" }}>
+            Simulasikan rute dan lihat skor aksesibilitas dalam satu alur.
+          </h2>
+          <p style={{ maxWidth: "560px", margin: "16px auto 28px", color: "#475569", fontSize: "15px", lineHeight: 1.65 }}>
+            Gambar koridor, aktifkan layer spasial, dapatkan skor komposit dan rekomendasi alignment dari PostGIS.
+          </p>
+          <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+            <button onClick={() => scrollTo("demo")} style={{
+              display: "inline-flex", alignItems: "center", gap: "8px",
+              height: "44px", padding: "0 20px",
+              color: "#fff", background: "var(--teal)",
+              border: "0", borderRadius: "12px",
+              fontSize: "13px", fontWeight: 750,
+              boxShadow: "0 18px 55px rgba(15,118,110,0.18)",
+              cursor: "pointer",
+            }}>
+              Lihat Demo <ArrowRight size={16} />
+            </button>
+            <Link href="/workspace" style={{
+              display: "inline-flex", alignItems: "center", gap: "6px",
+              height: "44px", padding: "0 20px",
+              color: "#0f172a", background: "#fff",
+              border: "1px solid #e5e7eb", borderRadius: "12px",
+              fontSize: "13px", fontWeight: 650,
+              boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
+            }}>
+              Buka Dasbor
+            </Link>
+          </div>
         </div>
       </section>
 
-      <section id="demo" className="interactive-demo">
-        <p className="section-index">Mode Demo</p>
-        <div className="demo-body">
-          <div className="demo-map-panel">
-            <div className="demo-badges">
-              <span className="demo-badge active">Basemap MAPID mock</span>
-              <span className="demo-badge route-badge">KORIDOR USULAN</span>
-              <span className="demo-badge">BUFFER 500M</span>
-              <span className="demo-badge">RUTE EXISTING</span>
-              <span className="demo-badge">POPULASI</span>
-              <span className="demo-badge">PROPERTY GO</span>
+      {/* How It Works */}
+      <section id="how" className="section-shell" style={{ padding: "96px 0" }}>
+        <SectionHeader
+          eyebrow="Cara kerja"
+          title="Dari layer peta sampai rekomendasi rute."
+          body="Pilih data, gambar rute, hitung dampak spasial, lalu bandingkan hasilnya."
+        />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0", border: "1px solid #e5e7eb" }}>
+          {howItWorks.map((step, index) => (
+            <motion.article
+              key={step.title}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{ delay: index * 0.08 }}
+              style={{
+                padding: "28px 24px",
+                borderRight: index < 3 ? "1px solid #e5e7eb" : "0",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "60px" }}>
+                <span style={{
+                  width: "32px", height: "32px", display: "grid", placeItems: "center",
+                  color: "var(--teal)", background: "var(--teal-pale)",
+                  borderRadius: "50%", fontFamily: "var(--font-metric)",
+                  fontSize: "11px", fontWeight: 800,
+                }}>
+                  0{index + 1}
+                </span>
+              </div>
+              <h3 style={{ margin: "0 0 10px", fontSize: "18px", letterSpacing: "-0.025em" }}>{step.title}</h3>
+              <p style={{ margin: 0, color: "#64748b", fontSize: "13px", lineHeight: 1.6 }}>{step.body}</p>
+            </motion.article>
+          ))}
+        </div>
+      </section>
+
+      {/* Demo */}
+      <section id="demo" className="section-shell" style={{ padding: "96px 0" }}>
+        <SectionHeader eyebrow="Demo" title="Simulasi evaluasi satu layar." />
+        <div style={{ display: "grid", gridTemplateColumns: "1.25fr 0.75fr", gap: "32px", alignItems: "start" }}>
+          {/* Left — Map */}
+          <div style={{
+            overflow: "hidden", borderRadius: "16px",
+            border: "1px solid #e5e7eb", background: "#fff",
+            boxShadow: "0 18px 55px rgba(15,23,42,0.08)",
+          }}>
+            <div style={{ padding: "12px 16px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
+              <span style={{ padding: "4px 10px", border: "1px solid #e5e7eb", borderRadius: "9999px", fontSize: "9px", fontWeight: 650, color: "var(--teal)" }}>Mode Demo</span>
+              <span style={{ padding: "4px 10px", border: "1px solid #e5e7eb", borderRadius: "9999px", fontSize: "9px", fontWeight: 650, color: "var(--muted)" }}>Basemap MAPID mock</span>
+              <span style={{ padding: "4px 10px", border: "1px solid #e5e7eb", borderRadius: "9999px", fontSize: "9px", fontWeight: 650, color: "var(--muted)" }}>Rute existing</span>
             </div>
-            <div className="demo-map-area">
-              <div className="demo-buffer-zone" />
-              <div className="demo-route-line" />
-              <span className="demo-road-lbl" style={{ left: "8%", top: "22%" }}>JALAN ARIEF RAHMAN HAKIM</span>
-              <span className="demo-road-lbl" style={{ right: "6%", bottom: "18%" }}>JALAN KELAMPIS JAYA</span>
-              <span className="demo-poi" style={{ left: "28%", top: "25%" }} />
-              <span className="demo-poi-lbl" style={{ left: "29%", top: "21%" }}>Hisana</span>
-              <span className="demo-poi" style={{ left: "55%", top: "55%" }} />
-              <span className="demo-poi-lbl" style={{ right: "38%", bottom: "38%" }}>Saga Textile</span>
-              <Link href="/workspace" className="demo-evaluate-btn">Buka workspace <ArrowRight size={12} /></Link>
-            </div>
-          </div>
-          <div className="demo-result-card">
-            <div className="demo-result-header">
-              <span>KARTU HASIL</span>
-            </div>
-            <p style={{ color: "var(--muted)", fontSize: "9px", margin: "-12px 0 12px" }}>Hasil simulasi</p>
-            <h3 className="demo-result-title">Cibubur Connector</h3>
-            <p style={{ color: "var(--muted)", fontSize: "9px", margin: "0 0 8px" }}>Skor Komposit</p>
-            <div className="demo-score-row">
-              <div className="demo-score-ring">
-                <div><strong>86</strong></div>
+            <div style={{ minHeight: "480px", position: "relative" }}>
+              <DemoMap />
+              <div style={{
+                position: "absolute", bottom: 0, left: 0, right: 0,
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "12px 16px", background: "rgba(255,255,255,0.9)",
+                borderTop: "1px solid #e5e7eb",
+              }}>
+                <div>
+                  <div style={{ fontSize: "8px", color: "var(--muted)", fontWeight: 700, letterSpacing: "0.1em" }}>KORIDOR USULAN</div>
+                  <div style={{ fontSize: "13px", fontWeight: 700 }}>{demoRouteName}</div>
+                </div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button style={{
+                    height: "34px", padding: "0 14px",
+                    color: "#64748b", background: "#fff",
+                    border: "1px solid #e5e7eb", borderRadius: "8px",
+                    fontSize: "10px", fontWeight: 650, cursor: "pointer",
+                  }} disabled>
+                    Gambar Rute
+                  </button>
+                  <button onClick={runDemo} style={{
+                    height: "34px", padding: "0 14px",
+                    display: "inline-flex", alignItems: "center", gap: "6px",
+                    color: "#fff", background: "var(--teal)",
+                    border: "0", borderRadius: "8px",
+                    fontSize: "10px", fontWeight: 750, cursor: "pointer",
+                    boxShadow: "0 4px 12px rgba(15,118,110,0.18)",
+                  }}>
+                    {demoState === "loading" ? <LoaderCircle className="spin" size={14} /> : null}
+                    Evaluasi
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="demo-metrics-grid">
-              <div className="demo-metric-box"><span>POPULASI</span><strong>124 rb</strong></div>
-              <div className="demo-metric-box"><span>OVERLAP</span><strong>14%</strong></div>
-              <div className="demo-metric-box"><span>PROPERTY</span><strong>167</strong></div>
+          </div>
+
+          {/* Right — Results */}
+          <aside style={{
+            background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px",
+            padding: "24px", boxShadow: "0 18px 55px rgba(15,23,42,0.08)",
+          }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 8px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "6px", fontSize: "8px", fontWeight: 700, color: "var(--teal)", marginBottom: "12px" }}>
+              <FileText size={12} />
+              Kartu hasil
             </div>
-            <div className="demo-insight">
-              <p>Simulasi skor komposit, populasi, overlap, dan Property GO.</p>
+            <h3 style={{ margin: 0, fontSize: "20px" }}>Hasil simulasi</h3>
+            <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: "11px", lineHeight: 1.55 }}>
+              Meniru hasil backend: skor komposit, populasi, overlap, dan kondisi jalan.
+            </p>
+            <div style={{ marginTop: "20px" }}>
+              {demoState === "empty" && (
+                <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b", fontSize: "11px" }}>
+                  <Route size={28} style={{ margin: "0 auto 12px", opacity: 0.4 }} />
+                  Rute sudah disiapkan. Klik Evaluasi untuk melihat hasil.
+                </div>
+              )}
+              {demoState === "loading" && (
+                <div style={{ textAlign: "center", padding: "40px 0" }}>
+                  <LoaderCircle className="spin" size={24} style={{ color: "var(--teal)", margin: "0 auto 12px" }} />
+                  <p style={{ color: "#64748b", fontSize: "11px" }}>Menghitung buffer 500m...</p>
+                </div>
+              )}
+              {demoState === "results" && (
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px" }}>
+                    <div style={{
+                      width: "64px", height: "64px", display: "grid", placeItems: "center",
+                      background: "conic-gradient(var(--teal) 309.6deg, #e5e7eb 0)",
+                      borderRadius: "50%", position: "relative",
+                    }}>
+                      <div style={{
+                        position: "absolute", inset: "6px", background: "#fff", borderRadius: "50%",
+                        display: "grid", placeItems: "center",
+                      }}>
+                        <strong style={{ fontFamily: "var(--font-metric)", fontSize: "22px" }}>86</strong>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "9px", fontWeight: 700 }}>Transit Accessibility Score</div>
+                      <div style={{ color: "var(--teal)", fontSize: "11px", fontWeight: 700, marginTop: "2px" }}>Sangat baik</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "16px" }}>
+                    {[
+                      { label: "POPULASI", value: "124 rb" },
+                      { label: "OVERLAP", value: "14%" },
+                      { label: "PROPERTY", value: "167" },
+                    ].map((m) => (
+                      <div key={m.label} style={{ textAlign: "center", padding: "10px", background: "#f8fafc", borderRadius: "8px" }}>
+                        <div style={{ color: "#64748b", fontSize: "7px", marginBottom: "4px" }}>{m.label}</div>
+                        <div style={{ fontFamily: "var(--font-metric)", fontSize: "18px", fontWeight: 700 }}>{m.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{
+                    padding: "12px", background: "linear-gradient(135deg, var(--teal-pale), #f8fafc)",
+                    border: "1px solid rgba(20,184,166,0.2)", borderRadius: "8px",
+                    fontSize: "10px", lineHeight: 1.55, color: "#334155",
+                  }}>
+                    Geser segmen utara 240m ke timur untuk meningkatkan cakupan hunian tanpa menaikkan overlap secara besar.
+                  </div>
+                </div>
+              )}
             </div>
+          </aside>
+        </div>
+      </section>
+
+      {/* Methodology */}
+      <section id="method" className="section-shell" style={{ padding: "96px 0" }}>
+        <div style={{
+          background: "#fff", border: "1px solid #e5e7eb", borderRadius: "20px",
+          padding: "48px 56px", boxShadow: "0 18px 55px rgba(15,23,42,0.08)",
+          display: "grid", gridTemplateColumns: "0.8fr 1.2fr", gap: "60px", alignItems: "start",
+        }}>
+          <SectionHeader
+            eyebrow="Metodologi"
+            title="Bahasa skor yang sederhana untuk review cepat."
+            body="Sistem membaca rute sebagai objek spasial, bukan hanya garis visual."
+            align="left"
+          />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignContent: "start" }}>
+            {methodologyItems.map((item) => (
+              <div key={item} style={{
+                padding: "12px 18px", background: "#fff",
+                border: "1px solid #e5e7eb", borderRadius: "9999px",
+                fontSize: "13px", fontWeight: 600,
+                boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
+              }}>
+                {item}
+                <div style={{ fontSize: "9px", color: "var(--teal)", fontWeight: 700, marginTop: "2px" }}>Komponen skor komposit</div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      <section id="metodologi" className="section methodology">
-        <div className="section-heading">
-          <div>
-            <p className="section-index">METODOLOGI</p>
-            <h2>Bahasa skor yang sederhana untuk review cepat.</h2>
-          </div>
-          <p>Sistem membaca rute sebagai objek spasial, bukan hanya garis visual.</p>
-        </div>
-        <div className="formula-grid">
-          <div className="formula-card">
-            <h4>Buffer 500m</h4>
-            <span className="komponen">Komponen skor</span>
-          </div>
-          <div className="formula-card">
-            <h4>Overlay Populasi</h4>
-            <span className="komponen">Komponen skor</span>
-          </div>
-          <div className="formula-card">
-            <h4>Overlap Existing</h4>
-            <span className="komponen">Komponen skor</span>
-          </div>
-          <div className="formula-card">
-            <h4>Grid-search Alternatif</h4>
-            <span className="komponen">Komponen skor</span>
-          </div>
+      {/* Data Sources */}
+      <section className="section-shell" style={{ padding: "96px 0" }}>
+        <SectionHeader
+          eyebrow="Sumber data"
+          title="Dibangun di atas konteks spasial MAPID."
+          body="Basemap, permintaan, titik aktivitas, dan batas wilayah untuk analisis rute."
+        />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "20px" }}>
+          {dataSources.map(({ title, body, icon: Icon }) => (
+            <div key={title} style={{
+              padding: "24px", background: "#fff",
+              border: "1px solid #e5e7eb", borderRadius: "16px",
+              boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
+            }}>
+              <div style={{ width: "40px", height: "40px", display: "grid", placeItems: "center", color: "var(--teal)", background: "var(--teal-pale)", borderRadius: "10px", marginBottom: "16px" }}>
+                <Icon size={20} />
+              </div>
+              <h4 style={{ margin: "0 0 6px", fontSize: "14px" }}>{title}</h4>
+              <p style={{ margin: 0, color: "#64748b", fontSize: "12px", lineHeight: 1.55 }}>{body}</p>
+            </div>
+          ))}
         </div>
       </section>
 
-      <section id="sumber" className="section sources-section">
-        <div>
-          <p className="section-index">SUMBER DATA</p>
-          <h2>Dibangun di atas konteks spasial MAPID.</h2>
-        </div>
-        <div className="source-list">
-          <div><Map size={20} /><span><b>MAPID Maps</b>Basemap jaringan jalan dan wilayah studi.</span></div>
-          <div><Sparkles size={20} /><span><b>Property GO</b>Titik aktivitas dan potensi tujuan perjalanan.</span></div>
-          <div><Database size={20} /><span><b>Data Populasi</b>Estimasi warga dalam buffer layanan 500m.</span></div>
-          <div><Route size={20} /><span><b>Batas Administrasi</b>Kelurahan, kecamatan, atau area studi.</span></div>
-        </div>
-      </section>
-
-      <section id="faq" className="section faq-section">
-        <div>
-          <p className="section-index">FAQ</p>
-          <h2>Pertanyaan yang sering muncul.</h2>
-          <p style={{ color: "var(--muted)", lineHeight: "1.7", fontSize: "12px", margin: "11px 0 0" }}>
-            Cara kerja analisis, batasan prototype, dan penggunaan hasil untuk stakeholder.
-          </p>
-        </div>
-        <div className="faq-list">
-          <details><summary>Apa maksud buffer 500m?</summary><p>Area layanan di sekitar rute untuk estimasi cakupan.</p></details>
-          <details><summary>Apakah AI mengarang insight?</summary><p>Tidak. Konsepnya membaca angka hasil analisis spasial.</p></details>
-          <details><summary>Apa yang dibandingkan?</summary><p>Populasi, skor, overlap, dan alternatif rute.</p></details>
-          <details><summary>Apakah sudah memakai backend?</summary><p>Belum. Landing ini memakai data tiruan untuk demo.</p></details>
+      {/* FAQ */}
+      <section id="faq" className="section-shell" style={{ padding: "96px 0" }}>
+        <SectionHeader
+          eyebrow="FAQ"
+          title="Pertanyaan yang sering muncul."
+          body="Cara kerja analisis, batasan prototype, dan penggunaan hasil untuk stakeholder."
+        />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          {faqItems.map(({ q, a }) => (
+            <div key={q} style={{
+              padding: "20px", background: "#fff",
+              border: "1px solid #e5e7eb", borderRadius: "16px",
+              boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                <HelpCircle size={16} color="var(--teal)" />
+                <span style={{ fontWeight: 700, fontSize: "14px", color: "var(--teal)" }}>{q}</span>
+              </div>
+              <p style={{ margin: "0 0 0 26px", color: "#64748b", fontSize: "12px", lineHeight: 1.6 }}>{a}</p>
+            </div>
+          ))}
         </div>
       </section>
 
-      <section className="closing-cta">
-        <div className="cta-line"><span /><i /><i /><i /><span /></div>
-        <p>MULAI DARI RUTE PERTAMA</p>
-        <h2>Uji ide koridor transit sebelum masuk</h2>
-        <h2 style={{ marginTop: "-0.05em" }}>ke analisis teknis yang berat.</h2>
-        <p style={{ maxWidth: "600px", margin: "20px auto 0", color: "var(--muted)", lineHeight: "1.7", fontSize: "12px" }}>
-          Prototype ini merangkum layer peta, buffer 500m, overlay populasi, overlap rute,
-          dan insight rekomendasi dalam format yang mudah dipresentasikan.
-        </p>
-        <div style={{ marginTop: "32px" }}>
-          <Link href="/workspace" className="button button-primary">Buka workspace <ArrowRight size={18} /></Link>
+      {/* Footer */}
+      <footer style={{
+        position: "relative", zIndex: 10,
+        borderTop: "1px solid #e5e7eb", background: "#fff",
+        padding: "32px 28px",
+      }}>
+        <div className="section-shell" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+          <span style={{ fontWeight: 600, fontSize: "13px" }}>Evaluator Aksesibilitas Transit</span>
+          <span style={{ color: "#64748b", fontSize: "12px" }}>MVP frontend. Data tiruan saja. Tanpa integrasi backend.</span>
         </div>
-      </section>
-
-      <footer>
-        <div className="brand"><span className="brand-mark"><Route size={19} /></span><span>TAE</span></div>
-        <p>Evaluator Aksesibilitas Transit</p>
       </footer>
     </main>
   );

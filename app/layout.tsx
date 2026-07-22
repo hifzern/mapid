@@ -3,7 +3,7 @@ import { DM_Sans, Inter } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-data" });
+const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
 
 export const metadata: Metadata = {
   title: "TAE — Evaluator Aksesibilitas Transit",

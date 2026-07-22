@@ -18,7 +18,7 @@
   --green-border: #bbf7d0;
   --green-text: #166534;
   --font-sans: var(--font-inter), "Inter", sans-serif;
-  --font-metric: var(--font-data), "DM Sans", sans-serif;
+  --font-metric: var(--font-dm-sans), "DM Sans", sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -371,6 +371,15 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 /* Key badge for shortcuts */
 .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; background: #fff; border: 1px solid var(--line); border-radius: 4px; font-family: var(--font-metric); font-size: 9px; font-weight: 700; color: var(--muted); line-height: 1; }
+
+/* Landing page utilities */
+.section-shell { width: min(1120px, calc(100vw - 48px)); margin-inline: auto; }
+.map-grid { background-image: linear-gradient(rgba(15,23,42,0.055) 1px,transparent 1px),linear-gradient(90deg,rgba(15,23,42,0.055) 1px,transparent 1px); background-size: 44px 44px; }
+
+@media (max-width: 850px) {
+  .mobile-banner { display: block !important; }
+  .section-shell { width: calc(100vw - 32px); }
+}
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes draw-route { to { stroke-dashoffset: 0; } }
