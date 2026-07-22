@@ -219,6 +219,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .tool-btn { height: 32px; flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 6px; font-size: 10px; font-weight: 650; cursor: pointer; }
 .tool-btn:hover { border-color: var(--teal); color: var(--teal); }
 .tool-btn:disabled { color: #94a3b8; background: #f8fafc; opacity: 1; }
+.tool-btn.active-tool { border-color: var(--teal); color: var(--teal); background: var(--teal-pale); }
 .tool-btn.shortcut { font-family: var(--font-metric); color: var(--muted); font-weight: 700; font-size: 11px; }
 .tool-btn.primary-btn { color: #fff; background: var(--teal); border-color: var(--teal); font-size: 11px; box-shadow: 0 4px 12px rgba(15,118,110,.18); }
 .tool-btn.primary-btn:hover { background: #0b625c; }
@@ -316,11 +317,25 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .no-recommendation { margin-top: 16px; padding: 13px; display: flex; gap: 9px; color: var(--green-text); background: var(--green-bg); border: 1px solid var(--green-border); font-size: 9px; }.no-recommendation span { display: grid; gap: 3px; }.no-recommendation b { font-size: 10px; }
 .action-row { display: flex; gap: 8px; margin-top: 16px; }
 .action-row .secondary-action { flex: 1; height: 34px; font-size: 10px; }
-.workspace-status { grid-area: status; z-index: 500; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; color: #64748b; background: #f8fafc; border-top: 1px solid var(--line); font-size: 8px; }
+.workspace-status { grid-area: status; z-index: 500; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; color: #64748b; background: #f8fafc; border-top: 1px solid var(--line); font-size: 9px; gap: 16px; }
 .workspace-status span { display: flex; align-items: center; gap: 6px; }
 .workspace-status i { width: 6px; height: 6px; background: #94a3b8; border-radius: 50%; }
 .workspace-status i.online { background: #16a34a; }
+.workspace-status .stat-divider { width: 1px; height: 12px; background: var(--line); }
+.workspace-status .tool-indicator { color: var(--teal); font-weight: 650; font-family: var(--font-metric); font-size: 8px; letter-spacing: .06em; }
 .spin { animation: spin .8s linear infinite; }
+
+/* Toast */
+.toast-container { position: fixed; z-index: 9999; bottom: 40px; right: 20px; display: grid; gap: 8px; max-width: 340px; }
+.toast { padding: 11px 14px; display: flex; align-items: center; gap: 9px; border-radius: 10px; font-size: 10px; line-height: 1.45; box-shadow: 0 12px 32px rgba(15,23,42,.12); animation: toast-in .2s ease-out; }
+.toast.info { color: var(--ink); background: #fff; border: 1px solid var(--line); }
+.toast.success { color: var(--green-text); background: var(--green-bg); border: 1px solid var(--green-border); }
+.toast.error { color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; }
+.toast-close { margin-left: auto; cursor: pointer; opacity: .45; background: none; border: 0; padding: 0; font-size: 12px; color: inherit; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Key badge for shortcuts */
+.kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; background: #fff; border: 1px solid var(--line); border-radius: 4px; font-family: var(--font-metric); font-size: 9px; font-weight: 700; color: var(--muted); line-height: 1; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes draw-route { to { stroke-dashoffset: 0; } }
