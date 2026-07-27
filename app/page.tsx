@@ -1,505 +1,377 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import Lenis from "lenis";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
   Building2,
-  CircuitBoard,
+  CheckCircle2,
   FileText,
   HelpCircle,
   Layers3,
-  LoaderCircle,
+  Loader2,
   Map,
   Route,
   Sparkles,
   UsersRound,
 } from "lucide-react";
-import HeroRouteCanvas from "@/components/landing/HeroRouteCanvas";
 import DemoMap from "@/components/landing/DemoMap";
+import HeroRouteCanvas from "@/components/landing/HeroRouteCanvas";
 
 const howItWorks = [
-  { title: "Pilih Layer", body: "Aktifkan rute existing, kepadatan penduduk, Property GO, dan batas admin." },
-  { title: "Gambar Rute", body: "Buat rute simulasi titik demi titik atau freehand di atas peta." },
-  { title: "Hitung Spasial", body: "Sistem membuat buffer 500m, overlay data, dan mencari alternatif rute." },
-  { title: "Bandingkan Hasil", body: "Lihat skor, breakdown metrik, insight AI, dan rekomendasi aksi." },
+  { title: "Pilih Layer", body: "Aktifkan batas Kulon Progo, rute existing, kepadatan penduduk, dan titik aktivitas." },
+  { title: "Gambar Rute", body: "Buat koridor simulasi titik demi titik di atas peta kawasan Wates dan sekitarnya." },
+  { title: "Hitung Spasial", body: "Sistem membuat buffer 500 m, menghitung populasi per km, dan mengukur overlap rute." },
+  { title: "Bandingkan Hasil", body: "Lihat skor, breakdown metrik, insight, dan alternatif translasi seluruh rute." },
 ];
 
 const dataSources = [
-  { title: "MAPID Maps", body: "Basemap untuk membaca jaringan jalan dan wilayah studi.", icon: Map },
-  { title: "Property GO", body: "Indikasi titik aktivitas, properti komersial, dan potensi tujuan perjalanan.", icon: Building2 },
-  { title: "Data Populasi", body: "Menghitung estimasi warga dalam buffer layanan 500m.", icon: UsersRound },
-  { title: "Batas Administrasi", body: "Membatasi analisis pada wilayah studi yang terverifikasi.", icon: Layers3 },
+  { title: "OpenStreetMap", body: "Basemap dan batas administratif Kabupaten Kulon Progo berlisensi ODbL.", icon: Map },
+  { title: "Property GO", body: "Indikasi titik aktivitas dan properti strategis sebagai konteks perjalanan.", icon: Building2 },
+  { title: "Data Populasi", body: "Mengestimasi warga yang masuk dalam buffer layanan 500 meter dari koridor.", icon: UsersRound },
+  { title: "Batas Administrasi", body: "Membatasi evaluasi pada wilayah studi Kulon Progo dan area sekitar Wates.", icon: Layers3 },
 ];
 
-const methodologyItems = ["Buffer 500m", "Overlay Populasi", "Overlap Rute Existing", "Aksesibilitas Jalan", "Grid-search Alternatif"];
-
-const faqItems = [
-  { q: "Apa maksud buffer 500m?", a: "Area layanan berjalan kaki di sekitar rute untuk estimasi cakupan populasi dan titik aktivitas." },
-  { q: "Apakah AI mengarang angka spasial?", a: "Tidak. PostGIS menghitung semua metrik. AI hanya menerima nilai terverifikasi dan menyusunnya menjadi narasi." },
-  { q: "Apa yang dibandingkan sistem?", a: "Cakupan populasi per km, overlap dengan rute existing, dan skor dari 16 alternatif pergeseran." },
-  { q: "Apakah sudah memakai backend?", a: "Landing ini memakai data tiruan. Workspace terhubung dengan PostGIS dan AI service." },
+const methodology = [
+  "Buffer 500 m",
+  "Populasi per kilometer",
+  "Overlap rute existing",
+  "16 translasi alternatif",
+  "Penjelasan berbasis agregat",
 ];
 
-function SectionHeader({ eyebrow, title, body, align = "center" }: { eyebrow: string; title: string; body?: string; align?: "center" | "left" }) {
+const faqs = [
+  {
+    question: "Apa maksud buffer 500 m?",
+    answer: "Buffer adalah area layanan di sekitar seluruh koridor yang digunakan untuk mengestimasi populasi dan titik aktivitas yang terjangkau.",
+  },
+  {
+    question: "Apakah data Kulon Progo ini resmi?",
+    answer: "Batas wilayah berasal dari OpenStreetMap. Layer analisis lain masih berupa data sintetis atau provisional dan belum untuk keputusan publik.",
+  },
+  {
+    question: "Apa yang dibandingkan dengan rute existing?",
+    answer: "Sistem membandingkan populasi per kilometer, overlap koridor, skor komposit, dan alternatif pergeseran seluruh geometri.",
+  },
+  {
+    question: "Bisakah saya memakai GeoJSON sendiri?",
+    answer: "Bisa. Workspace menerima drag-and-drop GeoJSON; satu LineString akan langsung dimuat sebagai rute yang dapat digeser dan diedit.",
+  },
+];
+
+const demoResult = {
+  score: 86,
+  coverage: "59.780 warga",
+  overlap: "18%",
+  property: "167",
+  insight: "Geser seluruh koridor 500 m ke utara untuk menaikkan cakupan tanpa menambah overlap secara berlebihan.",
+};
+
+const buttonBase = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-2xl text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-50";
+
+function buttonClass(variant: "primary" | "secondary" = "primary", large = false) {
+  return `${buttonBase} ${large ? "h-12 px-6" : "h-11 px-5"} ${variant === "primary"
+    ? "bg-primary text-white shadow-soft hover:bg-[#0B615B]"
+    : "border border-border bg-white text-text shadow-hairline hover:border-primary/40"}`;
+}
+
+function Badge({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div style={{ textAlign: align, marginBottom: "48px" }}>
-      <span style={{
-        display: "inline-block",
-        marginBottom: "12px",
-        color: "var(--teal)",
-        fontFamily: "var(--font-metric)",
-        fontSize: "10px",
-        fontWeight: 800,
-        letterSpacing: "0.13em",
-        textTransform: "uppercase",
-      }}>
-        {eyebrow}
-      </span>
-      <h2 style={{
-        maxWidth: align === "center" ? "640px" : "480px",
-        margin: align === "center" ? "0 auto" : "0",
-        fontSize: "clamp(36px, 4vw, 56px)",
-        lineHeight: 1.07,
-        letterSpacing: "-0.052em",
-      }}>
-        {title}
-      </h2>
-      {body && (
-        <p style={{
-          maxWidth: "560px",
-          margin: align === "center" ? "16px auto 0" : "16px 0 0",
-          color: "#475569",
-          fontSize: "16px",
-          lineHeight: 1.65,
-        }}>
-          {body}
-        </p>
-      )}
+    <div className={`inline-flex items-center rounded-full border border-border bg-white px-3 py-1 text-xs font-semibold text-primary shadow-hairline ${className}`}>
+      {children}
     </div>
   );
 }
 
 export default function LandingPage() {
-  const [demoState, setDemoState] = useState<"empty" | "loading" | "results">("empty");
-  const [demoRouteName] = useState("Cibubur Connector");
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [result, setResult] = useState<typeof demoResult | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reduceMotion = useReducedMotion();
 
-  const scrollTo = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: "smooth" });
-  };
+  useEffect(() => {
+    if (reduceMotion) return;
+    const lenis = new Lenis({ duration: 1.15, smoothWheel: true, wheelMultiplier: 0.9 });
+    let frame = 0;
+    const raf = (time: number) => {
+      lenis.raf(time);
+      frame = requestAnimationFrame(raf);
+    };
+    frame = requestAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(frame);
+      lenis.destroy();
+    };
+  }, [reduceMotion]);
 
-  const runDemo = () => {
-    setDemoState("loading");
-    setTimeout(() => setDemoState("results"), 2300);
-  };
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  function evaluateRoute() {
+    if (timer.current) clearTimeout(timer.current);
+    setResult(null);
+    setIsEvaluating(true);
+    timer.current = setTimeout(() => {
+      setIsEvaluating(false);
+      setResult(demoResult);
+      timer.current = null;
+    }, 2300);
+  }
+
+  function scrollToDemo() {
+    document.getElementById("demo")?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }
 
   return (
-    <main style={{ position: "relative", overflow: "hidden", background: "#fafbfc", color: "#0f172a", minHeight: "100vh" }}>
+    <main className="relative overflow-hidden bg-background font-body text-text">
+      <MobileBanner />
       <HeroRouteCanvas />
 
-      {/* Mobile banner */}
-      <div style={{
-        position: "sticky", top: 0, zIndex: 50,
-        background: "#fff", borderBottom: "1px solid #e5e7eb",
-        padding: "10px 20px", textAlign: "center",
-        fontSize: "11px", color: "#475569",
-        display: "none",
-      }} className="mobile-banner">
-        Dioptimalkan untuk workflow perencanaan di desktop, laptop, dan tablet landscape.
-      </div>
-
-      {/* Hero */}
-      <section style={{ position: "relative", zIndex: 10, minHeight: "92vh" }}>
-        {/* Nav */}
-        <nav style={{
-          position: "absolute", top: "24px", left: "50%", transform: "translateX(-50%)",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          width: "min(1120px, calc(100vw - 48px))", height: "52px",
-          padding: "0 20px",
-          background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)",
-          border: "1px solid #e5e7eb", borderRadius: "9999px",
-          boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
-        }}>
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 800, fontSize: "15px" }}>
-            <span style={{
-              width: "30px", height: "30px", display: "grid", placeItems: "center",
-              color: "#fff", background: "var(--teal)", borderRadius: "8px 8px 8px 3px",
-            }}>
-              <Route size={16} />
-            </span>
-            TAE
-          </Link>
-          <div style={{ display: "flex", alignItems: "center", gap: "24px", fontSize: "13px", fontWeight: 550, color: "#64748b" }}>
-            <a href="#how" onClick={(e) => { e.preventDefault(); scrollTo("how"); }} style={{ cursor: "pointer" }}>Cara kerja</a>
-            <a href="#demo" onClick={(e) => { e.preventDefault(); scrollTo("demo"); }} style={{ cursor: "pointer" }}>Demo</a>
-            <a href="#method" onClick={(e) => { e.preventDefault(); scrollTo("method"); }} style={{ cursor: "pointer" }}>Metodologi</a>
-            <a href="#faq" onClick={(e) => { e.preventDefault(); scrollTo("faq"); }} style={{ cursor: "pointer" }}>FAQ</a>
+      <section className="relative z-10 flex min-h-[92vh] items-center overflow-hidden px-6 pb-20 pt-8">
+        <nav className="absolute left-1/2 top-6 z-20 flex w-[min(940px,calc(100vw-48px))] -translate-x-1/2 items-center justify-between rounded-full border border-border bg-white/90 px-5 py-3 shadow-hairline">
+          <Link href="/" className="font-heading text-base font-bold">transight</Link>
+          <div className="hidden items-center gap-6 text-sm font-medium text-slate-600 md:flex">
+            <a href="#how">Cara kerja</a>
+            <a href="#demo">Demo</a>
+            <a href="#method">Metodologi</a>
+            <a href="#faq">FAQ</a>
           </div>
-          <Link href="/workspace" style={{
-            display: "inline-flex", alignItems: "center", gap: "6px",
-            height: "36px", padding: "0 14px",
-            color: "#64748b", background: "#fff",
-            border: "1px solid #e5e7eb", borderRadius: "9999px",
-            fontSize: "12px", fontWeight: 650,
-            boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
-          }}>
-            Masuk
-          </Link>
+          <Link href="/workspace" className={buttonClass("secondary")}>Workspace</Link>
         </nav>
 
-        {/* Hero text */}
-        <div style={{
-          width: "min(1120px, calc(100vw - 48px))", margin: "0 auto",
-          paddingTop: "160px", textAlign: "center", position: "relative", zIndex: 10,
-        }}>
-          {/* Blur bg */}
-          <div style={{
-            position: "absolute", top: "40%", left: "50%", transform: "translate(-50%, -50%)",
-            width: "500px", height: "500px", background: "rgba(20,184,166,0.08)",
-            borderRadius: "50%", filter: "blur(80px)", pointerEvents: "none",
-          }} />
-
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "9999px", fontSize: "11px", fontWeight: 650, color: "var(--teal)", boxShadow: "0 1px 0 rgba(15,23,42,0.06)", marginBottom: "24px" }}>
-            <Sparkles size={13} />
-            Prototipe pendukung keputusan spasial
-          </div>
-
+        <div className="section-shell relative z-10 mt-16 text-center">
+          <div className="absolute left-1/2 top-1/2 -z-10 h-[460px] w-[min(900px,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-background/85 blur-3xl" />
+          <Badge className="mx-auto gap-2">
+            <Sparkles size={14} />
+            Prototipe pendukung keputusan spasial Kulon Progo
+          </Badge>
           <motion.h1
-            initial={{ opacity: 0, y: 18 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
-            style={{
-              maxWidth: "780px", margin: "0 auto",
-              fontSize: "clamp(52px, 6vw, 82px)", lineHeight: 0.98,
-              letterSpacing: "-0.067em",
-            }}
+            transition={{ duration: reduceMotion ? 0 : 0.7, ease: "easeOut" }}
+            className="mx-auto mt-8 max-w-4xl font-heading text-6xl font-bold leading-[1.02] tracking-normal md:text-7xl"
           >
             Evaluator Aksesibilitas Transit
           </motion.h1>
-          <p style={{ maxWidth: "680px", margin: "24px auto 0", color: "#475569", fontSize: "18px", lineHeight: 1.68 }}>
-            Evaluasi ide rute transportasi publik dengan konteks spasial, metrik yang jelas,
-            dan rekomendasi perencanaan berbasis AI menggunakan data MAPID.
+          <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-600">
+            Evaluasi ide koridor transportasi publik di Kabupaten Kulon Progo dengan konteks spasial,
+            metrik transparan, dan rekomendasi yang dapat ditelusuri.
           </p>
-          <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "32px" }}>
-            <button onClick={() => scrollTo("demo")} style={{
-              display: "inline-flex", alignItems: "center", gap: "8px",
-              height: "44px", padding: "0 20px",
-              color: "#fff", background: "var(--teal)",
-              border: "0", borderRadius: "12px",
-              fontSize: "13px", fontWeight: 750,
-              boxShadow: "0 18px 55px rgba(15,118,110,0.18)",
-              cursor: "pointer",
-            }}>
-              Coba Demo <ArrowRight size={16} />
+          <div className="mt-9 flex items-center justify-center gap-3">
+            <button type="button" className={buttonClass("primary", true)} onClick={scrollToDemo}>
+              Coba Demo <ArrowRight size={18} />
             </button>
-            <Link href="/workspace" style={{
-              display: "inline-flex", alignItems: "center", gap: "6px",
-              height: "44px", padding: "0 20px",
-              color: "#0f172a", background: "#fff",
-              border: "1px solid #e5e7eb", borderRadius: "12px",
-              fontSize: "13px", fontWeight: 650,
-              boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
-            }}>
-              Masuk
-            </Link>
+            <Link href="/workspace" className={buttonClass("secondary", true)}>Buka Workspace</Link>
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section id="cta" className="section-shell" style={{ padding: "80px 0" }}>
-        <div style={{
-          background: "#fff", border: "1px solid #e5e7eb", borderRadius: "20px",
-          padding: "64px 56px", textAlign: "center",
-          boxShadow: "0 18px 55px rgba(15,23,42,0.08)",
-        }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "5px 10px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "9999px", fontSize: "10px", fontWeight: 700, color: "var(--teal)", boxShadow: "0 1px 0 rgba(15,23,42,0.06)", marginBottom: "20px" }}>
-            <CircuitBoard size={12} />
-            Mulai dari rute pertama
-          </div>
-          <h2 style={{ maxWidth: "640px", margin: "0 auto", fontSize: "clamp(30px, 4vw, 48px)", lineHeight: 1.07, letterSpacing: "-0.05em" }}>
-            Simulasikan rute dan lihat skor aksesibilitas dalam satu alur.
+      <section id="cta" className="section-shell relative z-10 py-20">
+        <div className="rounded-[20px] border border-border bg-white p-8 text-center shadow-soft md:p-12">
+          <Badge className="mx-auto">Mulai dari rute pertama</Badge>
+          <h2 className="mx-auto mt-5 max-w-3xl font-heading text-4xl font-bold leading-tight tracking-normal md:text-5xl">
+            Simulasikan koridor Kulon Progo dan lihat skor aksesibilitas dalam satu alur.
           </h2>
-          <p style={{ maxWidth: "560px", margin: "16px auto 28px", color: "#475569", fontSize: "15px", lineHeight: 1.65 }}>
-            Gambar koridor, aktifkan layer spasial, dapatkan skor komposit dan rekomendasi alignment dari PostGIS.
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600">
+            Prototype merangkum layer peta, buffer 500 m, populasi per kilometer, overlap rute,
+            dan rekomendasi alternatif dalam format yang mudah dipresentasikan.
           </p>
-          <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
-            <button onClick={() => scrollTo("demo")} style={{
-              display: "inline-flex", alignItems: "center", gap: "8px",
-              height: "44px", padding: "0 20px",
-              color: "#fff", background: "var(--teal)",
-              border: "0", borderRadius: "12px",
-              fontSize: "13px", fontWeight: 750,
-              boxShadow: "0 18px 55px rgba(15,118,110,0.18)",
-              cursor: "pointer",
-            }}>
-              Lihat Demo <ArrowRight size={16} />
+          <div className="mt-8 flex justify-center gap-3">
+            <button type="button" className={buttonClass("primary", true)} onClick={scrollToDemo}>
+              Lihat Demo <ArrowRight size={18} />
             </button>
-            <Link href="/workspace" style={{
-              display: "inline-flex", alignItems: "center", gap: "6px",
-              height: "44px", padding: "0 20px",
-              color: "#0f172a", background: "#fff",
-              border: "1px solid #e5e7eb", borderRadius: "12px",
-              fontSize: "13px", fontWeight: 650,
-              boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
-            }}>
-              Buka Dasbor
-            </Link>
+            <Link href="/workspace" className={buttonClass("secondary", true)}>Buka Workspace</Link>
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="how" className="section-shell" style={{ padding: "96px 0" }}>
+      <section id="how" className="section-shell relative z-10 py-24">
         <SectionHeader
           eyebrow="Cara kerja"
           title="Dari layer peta sampai rekomendasi rute."
-          body="Pilih data, gambar rute, hitung dampak spasial, lalu bandingkan hasilnya."
+          body="Alur sistem mengikuti proses perencanaan: pilih data, gambar rute, hitung dampak spasial, lalu bandingkan hasilnya."
         />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "0", border: "1px solid #e5e7eb" }}>
+        <div className="mt-14 grid gap-5 md:grid-cols-4">
           {howItWorks.map((step, index) => (
             <motion.article
               key={step.title}
-              initial={{ opacity: 0, y: 24 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-80px" }}
-              transition={{ delay: index * 0.08 }}
-              style={{
-                padding: "28px 24px",
-                borderRight: index < 3 ? "1px solid #e5e7eb" : "0",
-              }}
+              transition={{ delay: reduceMotion ? 0 : index * 0.08 }}
+              className="rounded-premium border border-border bg-white p-6 shadow-hairline"
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "60px" }}>
-                <span style={{
-                  width: "32px", height: "32px", display: "grid", placeItems: "center",
-                  color: "var(--teal)", background: "var(--teal-pale)",
-                  borderRadius: "50%", fontFamily: "var(--font-metric)",
-                  fontSize: "11px", fontWeight: 800,
-                }}>
-                  0{index + 1}
-                </span>
-              </div>
-              <h3 style={{ margin: "0 0 10px", fontSize: "18px", letterSpacing: "-0.025em" }}>{step.title}</h3>
-              <p style={{ margin: 0, color: "#64748b", fontSize: "13px", lineHeight: 1.6 }}>{step.body}</p>
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 font-heading text-sm font-bold text-primary">{index + 1}</div>
+              <h3 className="mt-6 font-heading text-xl font-bold">{step.title}</h3>
+              <p className="mt-3 text-sm leading-6 text-slate-600">{step.body}</p>
             </motion.article>
           ))}
         </div>
       </section>
 
-      {/* Demo */}
-      <section id="demo" className="section-shell" style={{ padding: "96px 0" }}>
-        <SectionHeader eyebrow="Demo" title="Simulasi evaluasi satu layar." />
-        <div style={{ display: "grid", gridTemplateColumns: "1.25fr 0.75fr", gap: "32px", alignItems: "start" }}>
-          {/* Left — Map */}
-          <div style={{
-            overflow: "hidden", borderRadius: "16px",
-            border: "1px solid #e5e7eb", background: "#fff",
-            boxShadow: "0 18px 55px rgba(15,23,42,0.08)",
-          }}>
-            <div style={{ padding: "12px 16px", display: "flex", flexWrap: "wrap", gap: "8px" }}>
-              <span style={{ padding: "4px 10px", border: "1px solid #e5e7eb", borderRadius: "9999px", fontSize: "9px", fontWeight: 650, color: "var(--teal)" }}>Mode Demo</span>
-              <span style={{ padding: "4px 10px", border: "1px solid #e5e7eb", borderRadius: "9999px", fontSize: "9px", fontWeight: 650, color: "var(--muted)" }}>Basemap MAPID mock</span>
-              <span style={{ padding: "4px 10px", border: "1px solid #e5e7eb", borderRadius: "9999px", fontSize: "9px", fontWeight: 650, color: "var(--muted)" }}>Rute existing</span>
+      <section id="demo" className="section-shell relative z-10 py-24">
+        <div className="grid gap-8 lg:grid-cols-[1.25fr_0.75fr]">
+          <div className="relative min-h-[560px] overflow-hidden rounded-[20px] border border-border bg-white shadow-soft">
+            <DemoMap />
+            <div className="absolute left-5 top-5 flex items-center gap-2">
+              <Badge>Mode Demo</Badge>
+              <Badge className="text-accent">Batas Kulon Progo</Badge>
             </div>
-            <div style={{ minHeight: "480px", position: "relative" }}>
-              <DemoMap />
-              <div style={{
-                position: "absolute", bottom: 0, left: 0, right: 0,
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "12px 16px", background: "rgba(255,255,255,0.9)",
-                borderTop: "1px solid #e5e7eb",
-              }}>
-                <div>
-                  <div style={{ fontSize: "8px", color: "var(--muted)", fontWeight: 700, letterSpacing: "0.1em" }}>KORIDOR USULAN</div>
-                  <div style={{ fontSize: "13px", fontWeight: 700 }}>{demoRouteName}</div>
+            <div className="absolute bottom-5 left-5 right-5 flex flex-wrap items-center justify-between gap-3 rounded-premium border border-border bg-white/95 p-4 shadow-soft">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Koridor usulan</p>
+                <p className="mt-1 font-heading text-xl font-bold">Koridor Wates–Sentolo</p>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                  <span>Buffer 500 m</span><span>Rute existing</span><span>Populasi</span><span>Property GO</span>
                 </div>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button style={{
-                    height: "34px", padding: "0 14px",
-                    color: "#64748b", background: "#fff",
-                    border: "1px solid #e5e7eb", borderRadius: "8px",
-                    fontSize: "10px", fontWeight: 650, cursor: "pointer",
-                  }} disabled>
-                    Gambar Rute
-                  </button>
-                  <button onClick={runDemo} style={{
-                    height: "34px", padding: "0 14px",
-                    display: "inline-flex", alignItems: "center", gap: "6px",
-                    color: "#fff", background: "var(--teal)",
-                    border: "0", borderRadius: "8px",
-                    fontSize: "10px", fontWeight: 750, cursor: "pointer",
-                    boxShadow: "0 4px 12px rgba(15,118,110,0.18)",
-                  }}>
-                    {demoState === "loading" ? <LoaderCircle className="spin" size={14} /> : null}
-                    Evaluasi
-                  </button>
-                </div>
+              </div>
+              <div className="flex gap-3">
+                <Link href="/workspace" className={buttonClass("secondary")}><Route size={18} /> Gambar Rute</Link>
+                <button type="button" className={buttonClass()} onClick={evaluateRoute} disabled={isEvaluating}>
+                  {isEvaluating ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
+                  Evaluasi
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Right — Results */}
-          <aside style={{
-            background: "#fff", border: "1px solid #e5e7eb", borderRadius: "16px",
-            padding: "24px", boxShadow: "0 18px 55px rgba(15,23,42,0.08)",
-          }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 8px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "6px", fontSize: "8px", fontWeight: 700, color: "var(--teal)", marginBottom: "12px" }}>
-              <FileText size={12} />
-              Kartu hasil
-            </div>
-            <h3 style={{ margin: 0, fontSize: "20px" }}>Hasil simulasi</h3>
-            <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: "11px", lineHeight: 1.55 }}>
-              Meniru hasil backend: skor komposit, populasi, overlap, dan kondisi jalan.
+          <aside className="rounded-[20px] border border-border bg-white p-6 shadow-soft">
+            <Badge className="gap-2"><FileText size={14} /> Kartu hasil</Badge>
+            <h2 className="mt-5 font-heading text-3xl font-bold">Hasil simulasi</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Panel meniru keluaran analisis: skor komposit, cakupan populasi, overlap rute, dan rekomendasi berbasis metrik.
             </p>
-            <div style={{ marginTop: "20px" }}>
-              {demoState === "empty" && (
-                <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b", fontSize: "11px" }}>
-                  <Route size={28} style={{ margin: "0 auto 12px", opacity: 0.4 }} />
-                  Rute sudah disiapkan. Klik Evaluasi untuk melihat hasil.
+            <div className="mt-8 min-h-[260px] rounded-premium border border-border bg-background p-5" aria-live="polite">
+              {!isEvaluating && !result ? (
+                <div className="flex h-full min-h-[220px] items-center justify-center text-center text-sm leading-6 text-slate-500">
+                  Rute sudah disiapkan. Klik Evaluasi untuk menghitung simulasi buffer dan overlay.
                 </div>
-              )}
-              {demoState === "loading" && (
-                <div style={{ textAlign: "center", padding: "40px 0" }}>
-                  <LoaderCircle className="spin" size={24} style={{ color: "var(--teal)", margin: "0 auto 12px" }} />
-                  <p style={{ color: "#64748b", fontSize: "11px" }}>Menghitung buffer 500m...</p>
+              ) : null}
+              {isEvaluating ? (
+                <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-4 text-center">
+                  <Loader2 className="animate-spin text-primary" size={30} />
+                  <p className="font-medium text-slate-700">Menghitung buffer 500 m dan overlay data...</p>
                 </div>
-              )}
-              {demoState === "results" && (
+              ) : null}
+              {result ? (
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "20px" }}>
-                    <div style={{
-                      width: "64px", height: "64px", display: "grid", placeItems: "center",
-                      background: "conic-gradient(var(--teal) 309.6deg, #e5e7eb 0)",
-                      borderRadius: "50%", position: "relative",
-                    }}>
-                      <div style={{
-                        position: "absolute", inset: "6px", background: "#fff", borderRadius: "50%",
-                        display: "grid", placeItems: "center",
-                      }}>
-                        <strong style={{ fontFamily: "var(--font-metric)", fontSize: "22px" }}>86</strong>
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "9px", fontWeight: 700 }}>Transit Accessibility Score</div>
-                      <div style={{ color: "var(--teal)", fontSize: "11px", fontWeight: 700, marginTop: "2px" }}>Sangat baik</div>
-                    </div>
+                  <div className="flex items-end justify-between">
+                    <span className="text-sm font-semibold text-slate-500">Skor Aksesibilitas</span>
+                    <span className="font-heading text-5xl font-bold text-primary">{result.score}</span>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "16px" }}>
-                    {[
-                      { label: "POPULASI", value: "124 rb" },
-                      { label: "OVERLAP", value: "14%" },
-                      { label: "PROPERTY", value: "167" },
-                    ].map((m) => (
-                      <div key={m.label} style={{ textAlign: "center", padding: "10px", background: "#f8fafc", borderRadius: "8px" }}>
-                        <div style={{ color: "#64748b", fontSize: "7px", marginBottom: "4px" }}>{m.label}</div>
-                        <div style={{ fontFamily: "var(--font-metric)", fontSize: "18px", fontWeight: 700 }}>{m.value}</div>
-                      </div>
-                    ))}
+                  <div className="mt-6 grid grid-cols-3 gap-3">
+                    <Metric label="Populasi" value={result.coverage} />
+                    <Metric label="Overlap" value={result.overlap} />
+                    <Metric label="Property" value={result.property} />
                   </div>
-                  <div style={{
-                    padding: "12px", background: "linear-gradient(135deg, var(--teal-pale), #f8fafc)",
-                    border: "1px solid rgba(20,184,166,0.2)", borderRadius: "8px",
-                    fontSize: "10px", lineHeight: 1.55, color: "#334155",
-                  }}>
-                    Geser segmen utara 240m ke timur untuk meningkatkan cakupan hunian tanpa menaikkan overlap secara besar.
-                  </div>
+                  <div className="mt-5 rounded-2xl border border-border bg-white p-4 text-sm leading-6 text-slate-700">{result.insight}</div>
                 </div>
-              )}
+              ) : null}
             </div>
           </aside>
         </div>
       </section>
 
-      {/* Methodology */}
-      <section id="method" className="section-shell" style={{ padding: "96px 0" }}>
-        <div style={{
-          background: "#fff", border: "1px solid #e5e7eb", borderRadius: "20px",
-          padding: "48px 56px", boxShadow: "0 18px 55px rgba(15,23,42,0.08)",
-          display: "grid", gridTemplateColumns: "0.8fr 1.2fr", gap: "60px", alignItems: "start",
-        }}>
-          <SectionHeader
-            eyebrow="Metodologi"
-            title="Bahasa skor yang sederhana untuk review cepat."
-            body="Sistem membaca rute sebagai objek spasial, bukan hanya garis visual."
-            align="left"
-          />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignContent: "start" }}>
-            {methodologyItems.map((item) => (
-              <div key={item} style={{
-                padding: "12px 18px", background: "#fff",
-                border: "1px solid #e5e7eb", borderRadius: "9999px",
-                fontSize: "13px", fontWeight: 600,
-                boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
-              }}>
-                {item}
-                <div style={{ fontSize: "9px", color: "var(--teal)", fontWeight: 700, marginTop: "2px" }}>Komponen skor komposit</div>
-              </div>
-            ))}
+      <section id="method" className="section-shell relative z-10 py-24">
+        <div className="rounded-[20px] border border-border bg-white p-8 shadow-soft md:p-10">
+          <div className="grid gap-10 md:grid-cols-[0.8fr_1.2fr]">
+            <SectionHeader
+              eyebrow="Metodologi"
+              title="Bahasa skor yang sederhana untuk review cepat."
+              body="Metodologi menjelaskan bagaimana sistem membaca rute sebagai objek spasial, bukan hanya garis visual."
+              align="left"
+            />
+            <div className="flex flex-wrap gap-3">
+              {methodology.map((item) => (
+                <div key={item} className="rounded-full border border-border bg-background px-5 py-3 shadow-hairline">
+                  <span className="font-semibold text-sm">{item}</span>
+                  <div className="text-xs text-primary font-semibold mt-1">Komponen evaluasi</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Data Sources */}
-      <section className="section-shell" style={{ padding: "96px 0" }}>
+      <section className="section-shell relative z-10 py-24">
         <SectionHeader
           eyebrow="Sumber data"
-          title="Dibangun di atas konteks spasial MAPID."
-          body="Basemap, permintaan, titik aktivitas, dan batas wilayah untuk analisis rute."
+          title="Dibangun di atas konteks spasial Kulon Progo."
+          body="Setiap sumber berperan sebagai layer analisis: basemap, permintaan, titik aktivitas, dan batas wilayah."
         />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "20px" }}>
+        <div className="mt-12 grid gap-5 md:grid-cols-4">
           {dataSources.map(({ title, body, icon: Icon }) => (
-            <div key={title} style={{
-              padding: "24px", background: "#fff",
-              border: "1px solid #e5e7eb", borderRadius: "16px",
-              boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
-            }}>
-              <div style={{ width: "40px", height: "40px", display: "grid", placeItems: "center", color: "var(--teal)", background: "var(--teal-pale)", borderRadius: "10px", marginBottom: "16px" }}>
-                <Icon size={20} />
-              </div>
-              <h4 style={{ margin: "0 0 6px", fontSize: "14px" }}>{title}</h4>
-              <p style={{ margin: 0, color: "#64748b", fontSize: "12px", lineHeight: 1.55 }}>{body}</p>
-            </div>
+            <article key={title} className="rounded-premium border border-border bg-white p-6 shadow-hairline">
+              <Icon className="text-accent" size={22} />
+              <h3 className="mt-6 font-heading text-xl font-bold">{title}</h3>
+              <p className="mt-3 text-sm leading-6 text-slate-600">{body}</p>
+            </article>
           ))}
         </div>
       </section>
 
-      {/* FAQ */}
-      <section id="faq" className="section-shell" style={{ padding: "96px 0" }}>
+      <section id="faq" className="section-shell relative z-10 py-24">
         <SectionHeader
           eyebrow="FAQ"
           title="Pertanyaan yang sering muncul."
-          body="Cara kerja analisis, batasan prototype, dan penggunaan hasil untuk stakeholder."
+          body="Cara kerja analisis, batas data prototype, dan penggunaan workspace dijelaskan sejak awal."
         />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          {faqItems.map(({ q, a }) => (
-            <div key={q} style={{
-              padding: "20px", background: "#fff",
-              border: "1px solid #e5e7eb", borderRadius: "16px",
-              boxShadow: "0 1px 0 rgba(15,23,42,0.06)",
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-                <HelpCircle size={16} color="var(--teal)" />
-                <span style={{ fontWeight: 700, fontSize: "14px", color: "var(--teal)" }}>{q}</span>
+        <div className="mt-12 grid gap-4 md:grid-cols-2">
+          {faqs.map((faq) => (
+            <article key={faq.question} className="rounded-premium border border-border bg-white p-6 shadow-hairline">
+              <div className="flex items-center gap-3 text-primary">
+                <HelpCircle size={20} />
+                <h3 className="font-heading text-xl font-bold">{faq.question}</h3>
               </div>
-              <p style={{ margin: "0 0 0 26px", color: "#64748b", fontSize: "12px", lineHeight: 1.6 }}>{a}</p>
-            </div>
+              <p className="mt-4 text-sm leading-7 text-slate-600">{faq.answer}</p>
+            </article>
           ))}
         </div>
       </section>
 
-      {/* Footer */}
-      <footer style={{
-        position: "relative", zIndex: 10,
-        borderTop: "1px solid #e5e7eb", background: "#fff",
-        padding: "32px 28px",
-      }}>
-        <div className="section-shell" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-          <span style={{ fontWeight: 600, fontSize: "13px" }}>Evaluator Aksesibilitas Transit</span>
-          <span style={{ color: "#64748b", fontSize: "12px" }}>MVP frontend. Data tiruan saja. Tanpa integrasi backend.</span>
+      <footer className="relative z-10 border-t border-border bg-white px-6 py-8">
+        <div className="section-shell flex flex-col justify-between gap-3 text-sm text-slate-500 md:flex-row">
+          <p className="font-semibold text-text">Evaluator Aksesibilitas Transit</p>
+          <p>Kabupaten Kulon Progo · Batas OSM, layer analisis provisional.</p>
         </div>
       </footer>
     </main>
+  );
+}
+
+function SectionHeader({ eyebrow, title, body, align = "center" }: {
+  eyebrow: string;
+  title: string;
+  body: string;
+  align?: "center" | "left";
+}) {
+  return (
+    <div className={align === "center" ? "relative mx-auto max-w-3xl text-center" : "relative max-w-xl text-left"}>
+      <div className="absolute left-1/2 top-1/2 -z-10 h-[260px] w-[min(760px,90vw)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-background/80 blur-3xl" />
+      <p className="text-xs font-bold uppercase tracking-[0.22em] text-primary">{eyebrow}</p>
+      <h2 className="mt-4 font-heading text-4xl font-bold leading-tight tracking-normal md:text-5xl">{title}</h2>
+      <p className="mt-5 text-base leading-8 text-slate-600">{body}</p>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-white p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="mt-2 font-heading text-xl font-bold">{value}</p>
+    </div>
+  );
+}
+
+function MobileBanner() {
+  return (
+    <div className="sticky top-0 z-50 border-b border-border bg-white px-4 py-3 text-center text-sm font-medium text-slate-700 shadow-hairline lg:hidden">
+      Dioptimalkan untuk workflow perencanaan di desktop, laptop, dan tablet landscape.
+    </div>
   );
 }
