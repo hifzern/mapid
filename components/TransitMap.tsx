@@ -2,16 +2,19 @@
 
 import L from "leaflet";
 import "leaflet-draw";
-import { forwardRef, useEffect, useRef } from "react";
-import { GeoJSON, MapContainer, TileLayer, useMap } from "react-leaflet";
+import { memo, useCallback, useEffect, useRef } from "react";
+import { GeoJSON, MapContainer, Pane, TileLayer, useMap } from "react-leaflet";
 import type {
   AnalysisResult,
   Feature,
+  ImportedDataset,
   LineString,
   MapContext,
   MapFeatureKind,
   SelectedFeature,
+  SnapPreview,
 } from "@/lib/types";
+import { normalizeMapGeoJSON } from "@/lib/types";
 import { useStore } from "@/lib/workspace-store";
 
 type LayerVisibility = {
@@ -23,6 +26,7 @@ type LayerVisibility = {
 };
 
 type FocusRequest = SelectedFeature & { nonce: number };
+type DatasetFitRequest = { id: string; nonce: number };
 
 type Props = {
   route: LineString | null;
@@ -35,7 +39,63 @@ type Props = {
   selectedFeature: SelectedFeature | null;
   onFeatureSelect: (feature: SelectedFeature) => void;
   focusRequest: FocusRequest | null;
+  importedDatasets: ImportedDataset[];
+  datasetFitRequest: DatasetFitRequest | null;
+  snapPreview: SnapPreview | null;
 };
+
+const localBoundarySource: MapContext["sources"][number] = {
+  source_key: "study_area",
+  dataset_name: "Batas Kabupaten Kulon Progo",
+  provider: "OpenStreetMap contributors",
+  license: "ODbL 1.0",
+  update_date: "2026-07-27",
+  status: "provisional",
+  limitation: "Batas administratif OSM belum diverifikasi terhadap dokumen pemerintah daerah.",
+};
+
+function withLocalBoundary(context: MapContext, studyArea: MapContext["study_area"]): MapContext {
+  return {
+    ...context,
+    study_area: studyArea,
+    sources: [localBoundarySource, ...context.sources.filter((source) => source.source_key !== "study_area")],
+  };
+}
+
+function localBoundaryContext(studyArea: MapContext["study_area"]): MapContext {
+  return {
+    study_area: studyArea,
+    existing_routes: { type: "FeatureCollection", features: [] },
+    population: { type: "FeatureCollection", features: [] },
+    property_go: { type: "FeatureCollection", features: [] },
+    public_facilities: { type: "FeatureCollection", features: [] },
+    sources: [localBoundarySource],
+    methodology: {
+      buffer_meters: 500,
+      overlap_tolerance_meters: 100,
+      population_weight: 0.625,
+      overlap_weight: 0.375,
+      population_assumption: "uniform_within_polygon",
+      target_calibration_status: "provisional",
+    },
+    truncated: { existing_routes: false, population: false, property_go: false, public_facilities: false },
+  };
+}
+
+let boundaryRequest: Promise<MapContext["study_area"] | null> | null = null;
+
+function loadLocalBoundary() {
+  boundaryRequest ||= fetch("/data/kulon-progo-boundary.geojson")
+    .then(async (response) => {
+      if (!response.ok) return null;
+      const data = normalizeMapGeoJSON(await response.json());
+      return data?.type === "Feature" && (data.geometry.type === "Polygon" || data.geometry.type === "MultiPolygon")
+        ? data as MapContext["study_area"]
+        : null;
+    })
+    .catch(() => null);
+  return boundaryRequest;
+}
 
 const densityColors: Record<string, string> = {
   very_low: "#ccfbf1",
@@ -53,72 +113,164 @@ const densityLabels: Record<string, string> = {
   very_high: "Sangat tinggi",
 };
 
-function DrawingControl({ route, onRouteChange }: Pick<Props, "route" | "onRouteChange">) {
+function DrawingControl({ route, onRouteChange, snapPreview }: Pick<Props, "route" | "onRouteChange" | "snapPreview">) {
   const map = useMap();
   const group = useRef<L.FeatureGroup | null>(null);
+  const drawHandler = useRef<L.Draw.Polyline | null>(null);
+  const dragCleanup = useRef<(() => void) | null>(null);
   const activeTool = useStore((s) => s.activeTool);
+  const setActiveTool = useStore((s) => s.setActiveTool);
   const setRouteState = useStore((s) => s.setRouteState);
 
-  useEffect(() => {
-    const featureGroup = new L.FeatureGroup().addTo(map);
-    group.current = featureGroup;
-    const control = new L.Control.Draw({
-      position: "topright",
-      draw: {
-        polyline: { shapeOptions: { color: "#2563eb", weight: 5 } },
-        polygon: false,
-        rectangle: false,
-        circle: false,
-        circlemarker: false,
-        marker: false,
-      },
-      edit: { featureGroup, remove: true },
-    });
-    map.addControl(control);
-
+  const bindRouteLayer = useCallback((layer: L.Polyline) => {
     const emitRoute = () => {
-      const layer = featureGroup.getLayers()[0] as L.Polyline | undefined;
-      if (!layer) return onRouteChange(null);
       const geometry = layer.toGeoJSON().geometry;
       if (geometry.type === "LineString") onRouteChange(geometry as LineString);
     };
-    const created: L.LeafletEventHandlerFn = (event) => {
-      const drawEvent = event as L.DrawEvents.Created;
-      featureGroup.clearLayers();
-      featureGroup.addLayer(drawEvent.layer);
-      emitRoute();
-    };
-    map.on(L.Draw.Event.CREATED, created);
-    map.on(L.Draw.Event.EDITED, emitRoute);
-    map.on(L.Draw.Event.DELETED, emitRoute);
+    const element = layer.getElement() as SVGPathElement | null;
+    const beginDrag = (event: PointerEvent) => {
+      const state = useStore.getState();
+      if (event.button !== 0 || state.activeTool !== "pan" || state.snapPreview) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragCleanup.current?.();
 
-    return () => {
-      map.off(L.Draw.Event.CREATED, created);
-      map.off(L.Draw.Event.EDITED, emitRoute);
-      map.off(L.Draw.Event.DELETED, emitRoute);
-      map.removeControl(control);
-      map.removeLayer(featureGroup);
+      const start = map.mouseEventToLatLng(event);
+      const startPoint = L.point(event.clientX, event.clientY);
+      const threshold = event.pointerType === "touch" ? 10 : event.pointerType === "pen" ? 6 : 4;
+      const original = (layer.getLatLngs() as L.LatLng[]).map((point) => L.latLng(point.lat, point.lng));
+      const mapWasDraggable = map.dragging.enabled();
+      let moved = false;
+      let finished = false;
+
+      const move = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== event.pointerId) return;
+        if (!moved && L.point(moveEvent.clientX, moveEvent.clientY).distanceTo(startPoint) < threshold) return;
+        moved = true;
+        const current = map.mouseEventToLatLng(moveEvent);
+        const latitudeDelta = current.lat - start.lat;
+        const longitudeDelta = current.lng - start.lng;
+        layer.setLatLngs(original.map((point) => [
+          point.lat + latitudeDelta,
+          point.lng + longitudeDelta,
+        ]));
+      };
+      const finish = (commit: boolean) => {
+        if (finished) return;
+        finished = true;
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", finishDrag);
+        document.removeEventListener("pointercancel", cancelDrag);
+        document.removeEventListener("keydown", cancelWithEscape);
+        if (element?.hasPointerCapture?.(event.pointerId)) element.releasePointerCapture(event.pointerId);
+        if (mapWasDraggable) map.dragging.enable();
+        element?.classList.remove("route-dragging");
+        dragCleanup.current = null;
+        if (commit && moved) emitRoute();
+        if (!commit && moved) layer.setLatLngs(original);
+      };
+      const finishDrag = (finishEvent: PointerEvent) => {
+        if (finishEvent.pointerId === event.pointerId) finish(true);
+      };
+      const cancelDrag = (cancelEvent: PointerEvent) => {
+        if (cancelEvent.pointerId === event.pointerId) finish(false);
+      };
+      const cancelWithEscape = (keyEvent: KeyboardEvent) => {
+        if (keyEvent.key !== "Escape") return;
+        keyEvent.preventDefault();
+        finish(false);
+      };
+
+      if (mapWasDraggable) map.dragging.disable();
+      element?.classList.add("route-dragging");
+      try {
+        element?.setPointerCapture?.(event.pointerId);
+      } catch {
+        // Synthetic pointer events used by tests do not own a native capture target.
+      }
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", finishDrag);
+      document.addEventListener("pointercancel", cancelDrag);
+      document.addEventListener("keydown", cancelWithEscape);
+      dragCleanup.current = () => finish(false);
     };
+
+    layer.on("edit", emitRoute);
+    element?.addEventListener("pointerdown", beginDrag);
+    layer.once("remove", () => element?.removeEventListener("pointerdown", beginDrag));
+    const state = useStore.getState();
+    element?.classList.toggle("route-draggable", state.activeTool === "pan" && !state.snapPreview);
   }, [map, onRouteChange]);
 
-  // Wire activeTool → leaflet-draw
+  useEffect(() => {
+    const routePane = map.getPane("proposedRoute") || map.createPane("proposedRoute");
+    routePane.style.zIndex = "550";
+    const featureGroup = new L.FeatureGroup().addTo(map);
+    group.current = featureGroup;
+
+    const created: L.LeafletEventHandlerFn = (event) => {
+      const drawEvent = event as L.DrawEvents.Created;
+      const layer = drawEvent.layer as L.Polyline;
+      layer.options.pane = "proposedRoute";
+      featureGroup.clearLayers();
+      featureGroup.addLayer(layer);
+      bindRouteLayer(layer);
+      const geometry = layer.toGeoJSON().geometry;
+      if (geometry.type === "LineString") onRouteChange(geometry as LineString);
+      setActiveTool("pan");
+    };
+    map.on(L.Draw.Event.CREATED, created);
+
+    return () => {
+      dragCleanup.current?.();
+      drawHandler.current?.disable();
+      map.off(L.Draw.Event.CREATED, created);
+      map.removeLayer(featureGroup);
+    };
+  }, [bindRouteLayer, map, onRouteChange, setActiveTool]);
+
   useEffect(() => {
     const featureGroup = group.current;
     if (!featureGroup) return;
+    drawHandler.current?.disable();
+    drawHandler.current = null;
 
-    // Disable all editing
     featureGroup.eachLayer((layer) => {
       const poly = layer as L.Polyline & { editing?: { disable: () => void; enable: () => void } };
       if (poly.editing) poly.editing.disable();
+      poly.setStyle({
+        weight: 5,
+        opacity: snapPreview ? 0.38 : 1,
+        dashArray: snapPreview ? "7 7" : "",
+      });
+      poly.getElement()?.classList.toggle("route-draggable", activeTool === "pan" && !snapPreview);
+      poly.getElement()?.classList.toggle("route-snap-original", Boolean(snapPreview));
+      poly.getElement()?.classList.remove("route-dragging");
     });
+
+    if (activeTool === "draw") {
+      setRouteState("drawing");
+      drawHandler.current = new L.Draw.Polyline(map as L.DrawMap, {
+        shapeOptions: { color: "#255fdb", weight: 5 },
+      });
+      drawHandler.current.enable();
+      return () => {
+        drawHandler.current?.disable();
+      };
+    }
 
     if (activeTool === "edit") {
       featureGroup.eachLayer((layer) => {
         const poly = layer as L.Polyline & { editing?: { disable: () => void; enable: () => void } };
         if (poly.editing) poly.editing.enable();
+        poly.setStyle({ weight: 7 });
       });
+      setRouteState(route ? "editing" : "idle");
+      return;
     }
-  }, [activeTool]);
+
+    setRouteState(route ? "ready" : "idle");
+  }, [activeTool, map, route, setRouteState, snapPreview]);
 
   useEffect(() => {
     const featureGroup = group.current;
@@ -129,21 +281,36 @@ function DrawingControl({ route, onRouteChange }: Pick<Props, "route" | "onRoute
       && JSON.stringify(current.coordinates) === JSON.stringify(route.coordinates)) return;
     featureGroup.clearLayers();
     if (route) {
-      featureGroup.addLayer(L.geoJSON(route, { style: { color: "#2563eb", weight: 5 } }));
-      setRouteState("ready");
+      const layer = L.polyline(
+        route.coordinates.map(([longitude, latitude]) => [latitude, longitude]),
+        { className: "proposed-route", color: "#255fdb", pane: "proposedRoute", weight: 5 },
+      );
+      featureGroup.addLayer(layer);
+      bindRouteLayer(layer);
+      const editing = (layer as L.Polyline & { editing?: { enable: () => void } }).editing;
+      if (useStore.getState().activeTool === "edit") {
+        editing?.enable();
+        layer.setStyle({ weight: 7 });
+        setRouteState("editing");
+      } else {
+        setRouteState("ready");
+      }
     }
-  }, [route, setRouteState]);
+  }, [bindRouteLayer, route, setRouteState]);
 
   return null;
 }
 
-function MapToolbar({ route, context }: Pick<Props, "route" | "context">) {
+function MapToolbar({ route, context, importedDatasets }: Pick<Props, "route" | "context" | "importedDatasets">) {
   const map = useMap();
+  const visibleDatasets = importedDatasets.filter((dataset) => dataset.visible);
 
   function fit() {
-    const geometry = route || context?.study_area;
-    if (!geometry) return;
-    const bounds = L.geoJSON(geometry as never).getBounds();
+    const geometries = visibleDatasets.length
+      ? visibleDatasets.map((dataset) => dataset.data)
+      : [route || context?.study_area].filter(Boolean);
+    const bounds = L.latLngBounds([]);
+    geometries.forEach((geometry) => bounds.extend(L.geoJSON(geometry as never).getBounds()));
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [28, 28], maxZoom: 16 });
   }
 
@@ -151,7 +318,7 @@ function MapToolbar({ route, context }: Pick<Props, "route" | "context">) {
     <div className="map-toolbar leaflet-control" role="group" aria-label="Kontrol tampilan peta">
       <button type="button" title="Perbesar" aria-label="Perbesar" onClick={() => map.zoomIn()}>+</button>
       <button type="button" title="Perkecil" aria-label="Perkecil" onClick={() => map.zoomOut()}>−</button>
-      <button type="button" title="Sesuaikan tampilan" aria-label="Sesuaikan tampilan" onClick={fit} disabled={!route && !context}>Fit</button>
+      <button type="button" title="Sesuaikan tampilan" aria-label="Sesuaikan tampilan" onClick={fit} disabled={!route && !context && !visibleDatasets.length}>Fit</button>
     </div>
   );
 }
@@ -162,33 +329,101 @@ function ContextLoader({ onContext, onNotice }: Pick<Props, "onContext" | "onNot
 
   useEffect(() => {
     let controller: AbortController | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let loadedBounds: L.LatLngBounds | null = null;
+    let cachedNotice = "";
+    let hasContext = false;
+    let stopped = false;
     const load = async () => {
+      const viewport = map.getBounds();
+      if (loadedBounds?.contains(viewport)) {
+        onNotice(cachedNotice);
+        return;
+      }
+      if (viewport.getEast() - viewport.getWest() > 5 || viewport.getNorth() - viewport.getSouth() > 5) {
+        controller?.abort();
+        onNotice("Perbesar peta untuk memuat layer analisis pada viewport ini.");
+        return;
+      }
+
+      const padded = viewport.pad(0.2);
+      const requestBounds = padded.getEast() - padded.getWest() <= 5 && padded.getNorth() - padded.getSouth() <= 5
+        ? padded
+        : viewport;
       controller?.abort();
-      controller = new AbortController();
-      const bounds = map.getBounds();
-      const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(",");
+      const requestController = new AbortController();
+      controller = requestController;
+      const bbox = [requestBounds.getWest(), requestBounds.getSouth(), requestBounds.getEast(), requestBounds.getNorth()]
+        .map((value) => value.toFixed(5))
+        .join(",");
+      const localBoundary = await loadLocalBoundary();
       try {
-        const response = await fetch(`/api/map-context?bbox=${bbox}`, { signal: controller.signal });
+        const response = await fetch(`/api/map-context?bbox=${bbox}`, { signal: requestController.signal });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Layer peta gagal dimuat.");
-        onContext(result);
-        const truncated = Object.values(result.truncated as Record<string, boolean>).some(Boolean);
-        onNotice(truncated ? "Sebagian data pada viewport dibatasi hingga 5.000 objek per layer." : "");
-        if (!fitted.current && result.study_area?.geometry) {
-          map.fitBounds(L.geoJSON(result.study_area).getBounds(), { padding: [28, 28] });
+        if (stopped) return;
+        const context = localBoundary ? withLocalBoundary(result, localBoundary) : result;
+        loadedBounds = requestBounds;
+        hasContext = true;
+        onContext(context);
+        const truncated = Object.values(context.truncated as Record<string, boolean>).some(Boolean);
+        cachedNotice = truncated ? "Sebagian data pada viewport dibatasi hingga 5.000 objek per layer." : "";
+        onNotice(cachedNotice);
+        if (!fitted.current && context.study_area?.geometry) {
           fitted.current = true;
+          if (!useStore.getState().route) {
+            map.fitBounds(L.geoJSON(context.study_area).getBounds(), { padding: [28, 28] });
+          }
         }
       } catch (error) {
-        if ((error as Error).name !== "AbortError") onNotice((error as Error).message);
+        if ((error as Error).name === "AbortError" || stopped) return;
+        if (localBoundary && !hasContext) {
+          loadedBounds = requestBounds;
+          hasContext = true;
+          cachedNotice = `${(error as Error).message} Batas Kulon Progo lokal tetap aktif.`;
+          onContext(localBoundaryContext(localBoundary));
+          onNotice(cachedNotice);
+          if (!fitted.current) {
+            fitted.current = true;
+            if (!useStore.getState().route) {
+              map.fitBounds(L.geoJSON(localBoundary).getBounds(), { padding: [28, 28] });
+            }
+          }
+          return;
+        }
+        cachedNotice = `${(error as Error).message}${hasContext ? " Data sebelumnya tetap aktif." : ""}`;
+        onNotice(cachedNotice);
       }
     };
+    const scheduleLoad = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void load(), 250);
+    };
     void load();
-    map.on("moveend", load);
+    map.on("moveend", scheduleLoad);
     return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
       controller?.abort();
-      map.off("moveend", load);
+      map.off("moveend", scheduleLoad);
     };
   }, [map, onContext, onNotice]);
+
+  return null;
+}
+
+function ImportedDatasetFit({ importedDatasets, datasetFitRequest }: Pick<Props, "importedDatasets" | "datasetFitRequest">) {
+  const map = useMap();
+  const fittedNonce = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!datasetFitRequest || fittedNonce.current === datasetFitRequest.nonce) return;
+    const dataset = importedDatasets.find((item) => item.id === datasetFitRequest?.id);
+    if (!dataset) return;
+    fittedNonce.current = datasetFitRequest.nonce;
+    const bounds = L.geoJSON(dataset.data as never).getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [42, 42], maxZoom: 16 });
+  }, [datasetFitRequest, importedDatasets, map]);
 
   return null;
 }
@@ -224,67 +459,109 @@ function MapFocus({ context, focusRequest }: Pick<Props, "context" | "focusReque
 function featureEvents(
   kind: MapFeatureKind,
   onFeatureSelect: Props["onFeatureSelect"],
-  tooltip: (feature: Feature) => string,
-  isSelected: (id: string) => boolean,
 ) {
   return (rawFeature: GeoJSON.Feature, layer: L.Layer) => {
     const feature = rawFeature as unknown as Feature<{ id: string }>;
-    const selected = isSelected(feature.properties.id);
-    layer.bindTooltip(tooltip(feature), { sticky: !selected, permanent: selected, direction: "top" });
-    layer.on("click", () => onFeatureSelect({ kind, id: feature.properties.id }));
+    layer.bindTooltip(featureTooltip(kind, feature), { sticky: true, direction: "top" });
+    layer.on("click", () => {
+      layer.closeTooltip();
+      onFeatureSelect({ kind, id: feature.properties.id });
+    });
   };
 }
 
-function FallbackMap() {
+function featureTooltip(kind: MapFeatureKind, feature: Feature) {
+  if (kind === "population") {
+    return `Kepadatan ${densityLabels[String(feature.properties.density_band)] || feature.properties.density_band}`;
+  }
+  if (kind === "existing_route") return `${feature.properties.name} · ${feature.properties.route_type}`;
+  return `${feature.properties.label} · ${feature.properties.kategori}`;
+}
+
+function SelectedFeatureLayer({ context, selectedFeature, layers }: Pick<Props, "context" | "selectedFeature" | "layers">) {
+  if (!context || !selectedFeature) return null;
+  const visible = {
+    existing_route: layers.routes,
+    population: layers.population,
+    property_go: layers.property,
+    public_facility: layers.facilities,
+  }[selectedFeature.kind];
+  const feature = visible ? findFeature(context, selectedFeature) : undefined;
+  if (!feature) return null;
+
   return (
-    <div className="fallback-overlay">
-      <svg viewBox="0 0 800 600" className="fallback-svg" preserveAspectRatio="xMidYMid slice">
-        <defs>
-          <pattern id="fgrid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M40 0L0 0 0 40" fill="none" stroke="#dce5e8" strokeWidth="0.5" />
-          </pattern>
-        </defs>
-        <rect width="800" height="600" fill="url(#fgrid)" />
-        <path d="M0 280 Q200 260 400 300 T800 260" fill="none" stroke="#b0c4d0" strokeWidth="6" strokeLinecap="round" />
-        <path d="M0 380 Q250 370 500 390 T800 360" fill="none" stroke="#b0c4d0" strokeWidth="4" strokeLinecap="round" />
-        <path d="M350 0 L370 600" fill="none" stroke="#b0c4d0" strokeWidth="3" strokeLinecap="round" />
-        <text x="160" y="270" fill="#64748b" fontSize="9" fontFamily="Inter, sans-serif">JALAN WATES</text>
-        <text x="160" y="370" fill="#64748b" fontSize="9" fontFamily="Inter, sans-serif">JALAN SELATAN</text>
-        <circle cx="370" cy="300" r="5" fill="#f59e0b" />
-        <text x="376" y="303" fill="#0f172a" fontSize="8" fontFamily="Inter, sans-serif">Pasar Wates</text>
-        <circle cx="280" cy="240" r="5" fill="#ef4444" />
-        <text x="286" y="243" fill="#0f172a" fontSize="8" fontFamily="Inter, sans-serif">RS Wates</text>
-      </svg>
-      <div className="fallback-card">
-        <strong>MAPID tile belum dikonfigurasi</strong>
-        <p>Atur <code>NEXT_PUBLIC_MAPID_TILE_URL</code> di .env untuk menampilkan peta.</p>
-        <span>Pan, zoom, dan drawing tetap berfungsi.</span>
-      </div>
-    </div>
+    <GeoJSON
+      key={`${selectedFeature.kind}-${selectedFeature.id}`}
+      data={feature as never}
+      style={() => {
+        if (feature.geometry.type === "Point") return {};
+        if (selectedFeature.kind === "population") {
+          return {
+            className: "map-feature map-feature-population map-feature-selected",
+            color: "#0f172a",
+            weight: 3.5,
+            dashArray: "7 4",
+            fillColor: densityColors[String(feature.properties.density_band)] || "#99f6e4",
+            fillOpacity: 0.62,
+          };
+        }
+        return {
+          className: "map-feature map-feature-existing-route map-feature-selected",
+          color: "#0f172a",
+          weight: 7,
+          opacity: 1,
+          dashArray: "10 4",
+        };
+      }}
+      pointToLayer={(_, latlng) => L.circleMarker(latlng, {
+        className: `map-feature map-feature-${selectedFeature.kind === "property_go" ? "property-go" : "public-facility"} map-feature-selected`,
+        radius: selectedFeature.kind === "property_go" ? 9 : 10,
+        color: "#0f172a",
+        weight: 4,
+        dashArray: "3 2",
+        fillColor: selectedFeature.kind === "property_go" ? "#f59e0b" : "#ef4444",
+        fillOpacity: 1,
+      })}
+      onEachFeature={(_, layer) => layer.bindTooltip(featureTooltip(selectedFeature.kind, feature), {
+        permanent: true,
+        direction: "top",
+      })}
+    />
   );
 }
 
-const TransitMap = forwardRef<HTMLDivElement, Props>(function TransitMap(props, _ref) {
-  const tileUrl = process.env.NEXT_PUBLIC_MAPID_TILE_URL;
-  const selected = (kind: MapFeatureKind, id: string) => (
-    props.selectedFeature?.kind === kind && props.selectedFeature.id === id
-  );
-  const selectionKey = props.selectedFeature ? `${props.selectedFeature.kind}-${props.selectedFeature.id}` : "none";
+function TransitMap(props: Props) {
+  const tileUrl = process.env.NEXT_PUBLIC_MAPID_TILE_URL
+    || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const tileAttribution = process.env.NEXT_PUBLIC_MAPID_TILE_URL
+    ? process.env.NEXT_PUBLIC_MAPID_ATTRIBUTION || "MAPID MAPS"
+    : "&copy; OpenStreetMap contributors";
 
   return (
-    <MapContainer center={[-7.85, 110.16]} zoom={13} minZoom={4} className="leaflet-map" zoomControl={false}>
-      {tileUrl ? (
-        <TileLayer
-          url={tileUrl}
-          attribution={process.env.NEXT_PUBLIC_MAPID_ATTRIBUTION || "MAPID MAPS"}
-        />
-      ) : (
-        <FallbackMap />
-      )}
+    <MapContainer center={[-7.82, 110.16]} zoom={11} minZoom={4} maxZoom={19} className="leaflet-map" zoomControl={false}>
+      <TileLayer url={tileUrl} attribution={tileAttribution} />
       <ContextLoader onContext={props.onContext} onNotice={props.onNotice} />
-      <MapToolbar route={props.route} context={props.context} />
+      <MapToolbar route={props.route} context={props.context} importedDatasets={props.importedDatasets} />
       <MapFocus context={props.context} focusRequest={props.focusRequest} />
-      <DrawingControl route={props.route} onRouteChange={props.onRouteChange} />
+      <ImportedDatasetFit importedDatasets={props.importedDatasets} datasetFitRequest={props.datasetFitRequest} />
+      <DrawingControl route={props.route} onRouteChange={props.onRouteChange} snapPreview={props.snapPreview} />
+
+      {props.snapPreview && (
+        <Pane name="snapPreviewRoute" style={{ zIndex: 560, pointerEvents: "none" }}>
+          <GeoJSON
+            key={JSON.stringify(props.snapPreview.route.coordinates)}
+            data={props.snapPreview.route as never}
+            style={{
+              className: "route-snap-candidate",
+              color: "#0b6b57",
+              weight: 7,
+              opacity: 1,
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+          />
+        </Pane>
+      )}
 
       {props.context && (
         <GeoJSON
@@ -296,99 +573,60 @@ const TransitMap = forwardRef<HTMLDivElement, Props>(function TransitMap(props, 
 
       {props.context && props.layers.population && (
         <GeoJSON
-          key={`population-${props.context.population.features.map((feature) => feature.properties.id).join("-")}-${selectionKey}`}
+          key={`population-${props.context.population.features.map((feature) => feature.properties.id).join("-")}`}
           data={props.context.population as never}
           style={(feature) => {
             const properties = feature?.properties as { id?: string; density_band?: string } | undefined;
-            const isSelected = Boolean(properties?.id && selected("population", properties.id));
             return {
-              className: `map-feature map-feature-population${isSelected ? " map-feature-selected" : ""}`,
-              color: isSelected ? "#0f172a" : "#0f766e",
-              weight: isSelected ? 3.5 : 0.7,
-              dashArray: isSelected ? "7 4" : undefined,
+              className: "map-feature map-feature-population",
+              color: "#0f766e",
+              weight: 0.7,
               fillColor: densityColors[properties?.density_band || ""] || "#99f6e4",
-              fillOpacity: isSelected ? 0.62 : 0.34,
+              fillOpacity: 0.34,
             };
           }}
-          onEachFeature={featureEvents(
-            "population",
-            props.onFeatureSelect,
-            (feature) => `Kepadatan ${densityLabels[String(feature.properties.density_band)] || feature.properties.density_band}`,
-            (id) => selected("population", id),
-          )}
+          onEachFeature={featureEvents("population", props.onFeatureSelect)}
         />
       )}
       {props.context && props.layers.routes && (
         <GeoJSON
-          key={`routes-${props.context.existing_routes.features.map((feature) => feature.properties.id).join("-")}-${selectionKey}`}
+          key={`routes-${props.context.existing_routes.features.map((feature) => feature.properties.id).join("-")}`}
           data={props.context.existing_routes as never}
-          style={(feature) => {
-            const id = String(feature?.properties?.id || "");
-            const isSelected = selected("existing_route", id);
-            return {
-              className: `map-feature map-feature-existing-route${isSelected ? " map-feature-selected" : ""}`,
-              color: isSelected ? "#0f172a" : "#64748b",
-              weight: isSelected ? 7 : 3,
-              opacity: isSelected ? 1 : 0.75,
-              dashArray: isSelected ? "10 4" : undefined,
-            };
-          }}
-          onEachFeature={featureEvents(
-            "existing_route",
-            props.onFeatureSelect,
-            (feature) => `${feature.properties.name} · ${feature.properties.route_type}`,
-            (id) => selected("existing_route", id),
-          )}
+          style={{ className: "map-feature map-feature-existing-route", color: "#64748b", weight: 3, opacity: 0.75 }}
+          onEachFeature={featureEvents("existing_route", props.onFeatureSelect)}
         />
       )}
       {props.context && props.layers.property && (
         <GeoJSON
-          key={`property-${props.context.property_go.features.map((feature) => feature.properties.id).join("-")}-${selectionKey}`}
+          key={`property-${props.context.property_go.features.map((feature) => feature.properties.id).join("-")}`}
           data={props.context.property_go as never}
-          pointToLayer={(feature, latlng) => {
-            const isSelected = selected("property_go", String(feature.properties?.id || ""));
-            return L.circleMarker(latlng, {
-              className: `map-feature map-feature-property-go${isSelected ? " map-feature-selected" : ""}`,
-              radius: isSelected ? 9 : 5,
-              color: isSelected ? "#0f172a" : "#fff",
-              weight: isSelected ? 4 : 2,
-              dashArray: isSelected ? "3 2" : undefined,
-              fillColor: "#f59e0b",
-              fillOpacity: 1,
-            });
-          }}
-          onEachFeature={featureEvents(
-            "property_go",
-            props.onFeatureSelect,
-            (feature) => `${feature.properties.label} · ${feature.properties.kategori}`,
-            (id) => selected("property_go", id),
-          )}
+          pointToLayer={(_, latlng) => L.circleMarker(latlng, {
+            className: "map-feature map-feature-property-go",
+            radius: 5,
+            color: "#fff",
+            weight: 2,
+            fillColor: "#f59e0b",
+            fillOpacity: 1,
+          })}
+          onEachFeature={featureEvents("property_go", props.onFeatureSelect)}
         />
       )}
       {props.context && props.layers.facilities && (
         <GeoJSON
-          key={`facilities-${props.context.public_facilities.features.map((feature) => feature.properties.id).join("-")}-${selectionKey}`}
+          key={`facilities-${props.context.public_facilities.features.map((feature) => feature.properties.id).join("-")}`}
           data={props.context.public_facilities as never}
-          pointToLayer={(feature, latlng) => {
-            const isSelected = selected("public_facility", String(feature.properties?.id || ""));
-            return L.circleMarker(latlng, {
-              className: `map-feature map-feature-public-facility${isSelected ? " map-feature-selected" : ""}`,
-              radius: isSelected ? 10 : 6,
-              color: isSelected ? "#0f172a" : "#fff",
-              weight: isSelected ? 4 : 2,
-              dashArray: isSelected ? "3 2" : undefined,
-              fillColor: "#ef4444",
-              fillOpacity: 1,
-            });
-          }}
-          onEachFeature={featureEvents(
-            "public_facility",
-            props.onFeatureSelect,
-            (feature) => `${feature.properties.label} · ${feature.properties.kategori}`,
-            (id) => selected("public_facility", id),
-          )}
+          pointToLayer={(_, latlng) => L.circleMarker(latlng, {
+            className: "map-feature map-feature-public-facility",
+            radius: 6,
+            color: "#fff",
+            weight: 2,
+            fillColor: "#ef4444",
+            fillOpacity: 1,
+          })}
+          onEachFeature={featureEvents("public_facility", props.onFeatureSelect)}
         />
       )}
+      <SelectedFeatureLayer context={props.context} selectedFeature={props.selectedFeature} layers={props.layers} />
       {props.analysis && props.layers.buffer && (
         <GeoJSON
           key={`buffer-${props.analysis.baseline.score}`}
@@ -403,8 +641,30 @@ const TransitMap = forwardRef<HTMLDivElement, Props>(function TransitMap(props, 
           style={{ color: "#14b8a6", weight: 5, dashArray: "9 8" }}
         />
       )}
+      {props.importedDatasets.filter((dataset) => dataset.visible).map((dataset) => (
+        <GeoJSON
+          key={dataset.id}
+          data={dataset.data as never}
+          style={{
+            className: "map-feature-imported",
+            color: "#d97706",
+            weight: 2,
+            dashArray: "5 4",
+            fillColor: "#f59e0b",
+            fillOpacity: 0.14,
+          }}
+          pointToLayer={(_, latlng) => L.circleMarker(latlng, {
+            className: "map-feature-imported",
+            radius: 6,
+            color: "#fff",
+            weight: 2,
+            fillColor: "#d97706",
+            fillOpacity: 1,
+          })}
+        />
+      ))}
     </MapContainer>
   );
-});
+}
 
-export default TransitMap;
+export default memo(TransitMap);

@@ -4,11 +4,11 @@ Public WebGIS for drawing a proposed transit corridor and receiving a transparen
 
 ## System
 
-- Next.js serves the landing page, Leaflet workspace, and same-origin API proxy.
+- Next.js serves the landing page, attributed OpenStreetMap/MAPID basemap, Leaflet workspace, and same-origin API proxy.
 - Supabase/PostGIS owns study data, 500 m buffers, population coverage, overlap, and the 16-candidate alignment search.
 - FastAPI sends a whitelisted result payload to OpenAI and rejects unsupported numbers.
 
-No login, route history, road score, PDF export, or raw-data endpoint is included.
+Workspace route drawing, vertex editing, whole-route dragging, scenarios, undo/redo, and GeoJSON/JSON export are local to the browser session. No login, server persistence, road score, PDF export, share link, or raw-data endpoint is included.
 
 ## Local setup
 
@@ -18,7 +18,9 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-Configure Supabase using the commands in `supabase/README.md`. `supabase/seed.sql` is synthetic and development-only. Run the AI service only after the scoring RPC is ready:
+Apply `supabase/migrations/` to a PostGIS-enabled Supabase project, then load `supabase/seed.sql` for synthetic development data. Run the AI service only after the scoring RPC is ready:
+
+The workspace uses OpenStreetMap by default. Set `NEXT_PUBLIC_MAPID_TILE_URL` and attribution only when an approved MAPID tile template is available. Verified contextual layers and route analysis require `SUPABASE_ANON_KEY`.
 
 ```sh
 python -m venv .venv
@@ -37,4 +39,12 @@ python -m pytest ai
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/scoring.sql
 ```
 
-The public release remains blocked until approved MAPID, route, population, Property GO, and study-boundary data replace the synthetic fixtures and the population-per-kilometre target is documented.
+## Production release gate
+
+- Import approved Kulon Progo study boundary, existing routes, population, Property GO, and public-facility datasets; do not deploy `supabase/seed.sql` as production data.
+- Update every row in `public.public_data_sources` with its provider, license, update date, limitation, and `verified` status only after review.
+- Document and approve the population-per-kilometre target, 500 m buffer, overlap tolerance, and score weights. The workspace intentionally labels the calibration provisional until then.
+- Configure `SUPABASE_ANON_KEY`; configure MAPID tiles only when an approved URL and attribution are available. OpenStreetMap remains the attributed fallback.
+- Run the browser-to-PostGIS workflow against real Kulon Progo corridors and the SQL scoring checks before release. The AI service is optional because deterministic insight remains available.
+
+The public release remains blocked until those data and methodology checks are complete.

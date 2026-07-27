@@ -1,19 +1,22 @@
 import type { Metadata } from "next";
-import { DM_Sans, Inter } from "next/font/google";
+import { Barlow_Condensed, DM_Sans, IBM_Plex_Mono, Inter, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
+const display = Barlow_Condensed({ subsets: ["latin"], variable: "--font-barlow", weight: ["600", "700"] });
+const body = Source_Sans_3({ subsets: ["latin"], variable: "--font-source" });
+const metric = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-ibm-mono", weight: ["500", "600", "700"] });
+const landingBody = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const landingHeading = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
 
 export const metadata: Metadata = {
-  title: "TAE — Evaluator Aksesibilitas Transit",
-  description: "Evaluasi koridor transit dengan analisis spasial yang transparan.",
+  title: "transight — Analisis Transit Kabupaten Kulon Progo",
+  description: "Evaluasi koridor Kabupaten Kulon Progo dengan analisis spasial transparan dan data ilustratif.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" data-scroll-behavior="smooth">
-      <body className={`${inter.variable} ${dmSans.variable}`}>{children}</body>
+      <body className={`${display.variable} ${body.variable} ${metric.variable} ${landingBody.variable} ${landingHeading.variable}`}>{children}</body>
     </html>
   );
 }

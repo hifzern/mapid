@@ -1,7 +1,8 @@
 import { create } from "zustand";
-import type { AnalysisResult, Insight, LineString, MapContext } from "@/lib/types";
+import { persist } from "zustand/middleware";
+import { isLineString, type AnalysisResult, type ImportedDataset, type Insight, type LineString, type MapContext, type SnapPreview } from "@/lib/types";
 
-export type Tool = "select" | "pan" | "draw" | "edit";
+export type Tool = "pan" | "draw" | "edit";
 export type RouteState = "idle" | "drawing" | "ready" | "analyzing" | "analyzed" | "editing";
 
 export type Scenario = {
@@ -16,11 +17,6 @@ export type Toast = {
   id: string;
   message: string;
   type: "info" | "success" | "error";
-};
-
-export type AppSettings = {
-  bufferRadius: number;
-  priority: "balanced" | "coverage" | "overlap" | "residential";
 };
 
 export type Store = {
@@ -40,15 +36,15 @@ export type Store = {
   scenarios: Scenario[];
   activeScenarioId: string;
   toasts: Toast[];
-  settings: AppSettings;
   pointCount: number;
   routeLengthKm: number;
-  routeName: string;
-progressStep: number;
+  progressStep: number;
+  importedDatasets: ImportedDataset[];
+  snapLoading: boolean;
+  snapPreview: SnapPreview | null;
 
   setActiveTool: (tool: Tool) => void;
   setRouteState: (state: RouteState) => void;
-  setRouteName: (name: string) => void;
   setRoute: (route: LineString | null) => void;
   pushRouteHistory: (route: LineString | null) => void;
   undo: () => void;
@@ -62,9 +58,13 @@ progressStep: number;
   setMapNotice: (notice: string) => void;
   setLoading: (loading: boolean) => void;
   setInsightLoading: (loading: boolean) => void;
+  setSnapLoading: (loading: boolean) => void;
+  setSnapPreview: (preview: SnapPreview | null) => void;
   toggleLayer: (layer: keyof Store["layers"]) => void;
   setLayers: (layers: Store["layers"]) => void;
-  setSettings: (settings: Partial<AppSettings>) => void;
+  addImportedDataset: (dataset: ImportedDataset) => boolean;
+  toggleImportedDataset: (id: string) => void;
+  removeImportedDataset: (id: string) => void;
   addToast: (message: string, type?: Toast["type"]) => void;
   removeToast: (id: string) => void;
   updateMetrics: (route: LineString) => void;
@@ -72,12 +72,13 @@ progressStep: number;
   createScenario: (name?: string) => void;
   switchScenario: (id: string) => void;
   renameScenario: (id: string, name: string) => void;
-  duplicateScenario: (id: string) => void;
   deleteScenario: (id: string) => void;
   saveCurrentToScenario: () => void;
 
   resetWorkspace: () => void;
 };
+
+export const MAX_IMPORTED_DATASETS = 5;
 
 const generateId = () => Math.random().toString(36).slice(2, 8);
 
@@ -86,10 +87,40 @@ function createScenario(name = "Rute Simulasi A"): Scenario {
 }
 
 const defaultScenarios: Scenario[] = [createScenario()];
+const defaultLayers: Store["layers"] = { routes: true, population: true, property: true, facilities: true, buffer: true };
 
-export const useStore = create<Store>((set, get) => ({
+function routeMetrics(route: LineString | null) {
+  if (!route) return { pointCount: 0, routeLengthKm: 0 };
+  let lengthKm = 0;
+  for (let i = 1; i < route.coordinates.length; i++) {
+    const [x1, y1] = route.coordinates[i - 1];
+    const [x2, y2] = route.coordinates[i];
+    const dx = (x2 - x1) * Math.PI / 180 * 6371 * Math.cos((y1 + y2) / 2 * Math.PI / 180);
+    const dy = (y2 - y1) * Math.PI / 180 * 6371;
+    lengthKm += Math.sqrt(dx * dx + dy * dy);
+  }
+  return { pointCount: route.coordinates.length, routeLengthKm: Math.round(lengthKm * 100) / 100 };
+}
+
+function isPersistedScenario(value: unknown): value is Scenario {
+  if (!value || typeof value !== "object") return false;
+  const scenario = value as Partial<Scenario>;
+  return typeof scenario.id === "string"
+    && typeof scenario.name === "string"
+    && (scenario.route === null || isLineString(scenario.route));
+}
+
+function persistedLayers(value: unknown): Store["layers"] | null {
+  if (!value || typeof value !== "object") return null;
+  const layers = value as Partial<Store["layers"]>;
+  return Object.keys(defaultLayers).every((key) => typeof layers[key as keyof Store["layers"]] === "boolean")
+    ? layers as Store["layers"]
+    : null;
+}
+
+export const useStore = create<Store>()(persist((set, get) => ({
   routeState: "idle",
-  activeTool: "select",
+  activeTool: "pan",
   route: null,
   routeHistory: [null],
   historyIndex: 0,
@@ -100,23 +131,30 @@ export const useStore = create<Store>((set, get) => ({
   mapNotice: "",
   loading: false,
   insightLoading: false,
-  layers: { routes: true, population: true, property: true, facilities: true, buffer: true },
+  layers: defaultLayers,
   scenarios: defaultScenarios,
   activeScenarioId: defaultScenarios[0].id,
   toasts: [],
-  settings: { bufferRadius: 500, priority: "balanced" },
   pointCount: 0,
   routeLengthKm: 0,
-  routeName: "Rute Simulasi",
-progressStep: 0,
+  progressStep: 0,
+  importedDatasets: [],
+  snapLoading: false,
+  snapPreview: null,
 
-  setActiveTool: (tool) => set({ activeTool: tool }),
+  setActiveTool: (tool) => set({ activeTool: tool, ...(tool === "pan" ? {} : { snapPreview: null }) }),
   setRouteState: (state) => set({ routeState: state }),
-  setRouteName: (name) => set({ routeName: name }),
 
   setRoute: (route) => {
-    set({ route, routeState: route ? "ready" : "idle", analysis: null, insight: null, error: "" });
-    if (route) get().updateMetrics(route);
+    set({
+      route,
+      routeState: route ? "ready" : "idle",
+      analysis: null,
+      insight: null,
+      error: "",
+      snapPreview: null,
+      ...routeMetrics(route),
+    });
   },
 
   pushRouteHistory: (route) => {
@@ -124,8 +162,17 @@ progressStep: 0,
     const trimmed = routeHistory.slice(0, historyIndex + 1);
     trimmed.push(route);
     if (trimmed.length > 50) trimmed.shift();
-    set({ routeHistory: trimmed, historyIndex: trimmed.length - 1, route, routeState: route ? "ready" : "idle", analysis: null, insight: null, error: "" });
-    if (route) get().updateMetrics(route);
+    set({
+      routeHistory: trimmed,
+      historyIndex: trimmed.length - 1,
+      route,
+      routeState: route ? "ready" : "idle",
+      analysis: null,
+      insight: null,
+      error: "",
+      snapPreview: null,
+      ...routeMetrics(route),
+    });
   },
 
   undo: () => {
@@ -133,8 +180,7 @@ progressStep: 0,
     if (historyIndex > 0) {
       const newIdx = historyIndex - 1;
       const route = routeHistory[newIdx];
-      set({ historyIndex: newIdx, route, routeState: route ? "ready" : "idle", analysis: null, insight: null, error: "" });
-      if (route) get().updateMetrics(route);
+      set({ historyIndex: newIdx, route, routeState: route ? "ready" : "idle", analysis: null, insight: null, error: "", snapPreview: null, ...routeMetrics(route) });
     }
   },
 
@@ -143,8 +189,7 @@ progressStep: 0,
     if (historyIndex < routeHistory.length - 1) {
       const newIdx = historyIndex + 1;
       const route = routeHistory[newIdx];
-      set({ historyIndex: newIdx, route, routeState: route ? "ready" : "idle", analysis: null, insight: null, error: "" });
-      if (route) get().updateMetrics(route);
+      set({ historyIndex: newIdx, route, routeState: route ? "ready" : "idle", analysis: null, insight: null, error: "", snapPreview: null, ...routeMetrics(route) });
     }
   },
 
@@ -158,9 +203,26 @@ progressStep: 0,
   setMapNotice: (notice) => set({ mapNotice: notice }),
   setLoading: (loading) => set({ loading }),
   setInsightLoading: (loading) => set({ insightLoading: loading }),
+  setSnapLoading: (snapLoading) => set({ snapLoading }),
+  setSnapPreview: (snapPreview) => set({ snapPreview }),
   toggleLayer: (layer) => set((s) => ({ layers: { ...s.layers, [layer]: !s.layers[layer] } })),
   setLayers: (layers) => set({ layers }),
-  setSettings: (partial) => set((s) => ({ settings: { ...s.settings, ...partial } })),
+  addImportedDataset: (dataset) => {
+    if (get().importedDatasets.length >= MAX_IMPORTED_DATASETS) {
+      get().addToast(`Maksimal ${MAX_IMPORTED_DATASETS} layer GeoJSON lokal.`, "error");
+      return false;
+    }
+    set((state) => ({ importedDatasets: [...state.importedDatasets, dataset] }));
+    return true;
+  },
+  toggleImportedDataset: (id) => set((state) => ({
+    importedDatasets: state.importedDatasets.map((dataset) => (
+      dataset.id === id ? { ...dataset, visible: !dataset.visible } : dataset
+    )),
+  })),
+  removeImportedDataset: (id) => set((state) => ({
+    importedDatasets: state.importedDatasets.filter((dataset) => dataset.id !== id),
+  })),
 
   addToast: (message, type = "info") => {
     const id = generateId();
@@ -171,23 +233,30 @@ progressStep: 0,
   removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   updateMetrics: (route) => {
-    if (!route) return { pointCount: 0, routeLengthKm: 0 };
-    const coords = route.coordinates;
-    let lengthKm = 0;
-    for (let i = 1; i < coords.length; i++) {
-      const [x1, y1] = coords[i - 1];
-      const [x2, y2] = coords[i];
-      const dx = (x2 - x1) * Math.PI / 180 * 6371 * Math.cos((y1 + y2) / 2 * Math.PI / 180);
-      const dy = (y2 - y1) * Math.PI / 180 * 6371;
-      lengthKm += Math.sqrt(dx * dx + dy * dy);
-    }
-    set({ pointCount: coords.length, routeLengthKm: Math.round(lengthKm * 100) / 100 });
+    set(routeMetrics(route));
   },
 
   createScenario: (name) => {
-    const s = createScenario(name);
-    set((state) => ({ scenarios: [...state.scenarios, s], activeScenarioId: s.id }));
-    get().addToast(`Scenario "${s.name}" dibuat`, "success");
+    const { scenarios, activeScenarioId, route, analysis, insight } = get();
+    const scenario = createScenario(name || `Rute Simulasi ${String.fromCharCode(65 + scenarios.length)}`);
+    set({
+      scenarios: [
+        ...scenarios.map((item) => item.id === activeScenarioId ? { ...item, route, analysis, insight } : item),
+        scenario,
+      ],
+      activeScenarioId: scenario.id,
+      route: null,
+      routeHistory: [null],
+      historyIndex: 0,
+      analysis: null,
+      insight: null,
+      error: "",
+      routeState: "idle",
+      activeTool: "pan",
+      snapPreview: null,
+      ...routeMetrics(null),
+    });
+    get().addToast(`Skenario "${scenario.name}" dibuat`, "success");
   },
 
   switchScenario: (id) => {
@@ -204,27 +273,18 @@ progressStep: 0,
       analysis: next.analysis,
       insight: next.insight,
       activeScenarioId: id,
+      routeHistory: [next.route],
+      historyIndex: 0,
       error: "",
       routeState: next.route ? "ready" : "idle",
+      activeTool: "pan",
+      snapPreview: null,
+      ...routeMetrics(next.route),
     }));
-    if (next.route) get().updateMetrics(next.route);
   },
 
   renameScenario: (id, name) => {
     set((s) => ({ scenarios: s.scenarios.map((sc) => (sc.id === id ? { ...sc, name } : sc)) }));
-  },
-
-  duplicateScenario: (id) => {
-    const { scenarios } = get();
-    const original = scenarios.find((s) => s.id === id);
-    if (!original) return;
-    const dup: Scenario = {
-      ...original,
-      id: generateId(),
-      name: `${original.name} (copy)`,
-    };
-    set((s) => ({ scenarios: [...s.scenarios, dup], activeScenarioId: dup.id }));
-    get().addToast(`Scenario "${dup.name}" dibuat`, "success");
   },
 
   deleteScenario: (id) => {
@@ -246,9 +306,13 @@ progressStep: 0,
       analysis: next.analysis,
       insight: next.insight,
       routeState: next.route ? "ready" : "idle",
+      routeHistory: [next.route],
+      historyIndex: 0,
+      activeTool: "pan",
+      snapPreview: null,
+      ...routeMetrics(next.route),
     });
-    if (next.route) get().updateMetrics(next.route);
-    get().addToast("Scenario dihapus", "info");
+    get().addToast("Skenario dihapus", "info");
   },
 
   saveCurrentToScenario: () => {
@@ -264,7 +328,7 @@ progressStep: 0,
     const fresh = createScenario();
     set({
       routeState: "idle",
-      activeTool: "select",
+      activeTool: "pan",
       route: null,
       routeHistory: [null],
       historyIndex: 0,
@@ -274,10 +338,47 @@ progressStep: 0,
       mapNotice: "",
       loading: false,
       insightLoading: false,
+      snapLoading: false,
+      snapPreview: null,
       scenarios: [fresh],
       activeScenarioId: fresh.id,
-      pointCount: 0,
-      routeLengthKm: 0,
+      importedDatasets: [],
+      ...routeMetrics(null),
     });
+  },
+}), {
+  name: "transight-workspace",
+  version: 1,
+  partialize: (state) => ({
+    layers: state.layers,
+    activeScenarioId: state.activeScenarioId,
+    scenarios: state.scenarios.map((scenario) => ({
+      ...scenario,
+      route: scenario.id === state.activeScenarioId ? state.route : scenario.route,
+      analysis: null,
+      insight: null,
+    })),
+  }),
+  merge: (persisted, current) => {
+    const saved = persisted as Partial<Store>;
+    const scenarios = Array.isArray(saved.scenarios)
+      ? saved.scenarios.filter(isPersistedScenario).map((scenario) => ({ ...scenario, analysis: null, insight: null }))
+      : [];
+    if (!scenarios.length) return current;
+    const activeScenarioId = scenarios.some((scenario) => scenario.id === saved.activeScenarioId)
+      ? saved.activeScenarioId as string
+      : scenarios[0].id;
+    const route = scenarios.find((scenario) => scenario.id === activeScenarioId)?.route || null;
+    return {
+      ...current,
+      layers: persistedLayers(saved.layers) || current.layers,
+      scenarios,
+      activeScenarioId,
+      route,
+      routeHistory: [route],
+      historyIndex: 0,
+      routeState: route ? "ready" : "idle",
+      ...routeMetrics(route),
+    };
   },
 }));
