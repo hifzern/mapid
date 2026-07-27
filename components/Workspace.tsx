@@ -12,21 +12,23 @@ import {
   Play,
   Route as RouteIcon,
   Sparkles,
-  GitCompareArrows,
   FileText,
+  FileUp,
   Redo2,
   Undo2,
   Download,
   Plus,
-  MousePointer2,
   Hand,
   Pencil,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
-import type { AnalysisResult, LineString } from "@/lib/types";
-import { useStore } from "@/lib/workspace-store";
-import type { Store } from "@/lib/workspace-store";
+import type { CSSProperties, DragEvent } from "react";
+import { useShallow } from "zustand/react/shallow";
+import type { AnalysisResult, LineString, MapContext, MapGeoJSON, Position, SelectedFeature, SnapEndpoint, SnapPreview, SourceStatus } from "@/lib/types";
+import { isLineString, normalizeMapGeoJSON } from "@/lib/types";
+import { MAX_IMPORTED_DATASETS, useStore } from "@/lib/workspace-store";
 import ToastContainer from "./ToastContainer";
 
 const TransitMap = dynamic(() => import("./TransitMap"), {
@@ -35,7 +37,25 @@ const TransitMap = dynamic(() => import("./TransitMap"), {
 });
 
 const directionLabel = { north: "utara", south: "selatan", east: "timur", west: "barat" };
-const toolLabels: Record<string, string> = { select: "Select (V)", pan: "Pan (Space)", draw: "Draw (D)", edit: "Edit (E)" };
+const toolLabels = { pan: "Jelajah", draw: "Gambar (D)", edit: "Edit (E)" };
+const sourceStatusLabel: Record<SourceStatus, string> = {
+  demo: "Demo",
+  provisional: "Provisional",
+  verified: "Terverifikasi",
+  unavailable: "Belum tersedia",
+};
+
+function dataReadiness(context: MapContext | null): SourceStatus {
+  if (!context?.sources.length) return "unavailable";
+  const statuses = [
+    ...context.sources.map((source) => source.status),
+    context.methodology.target_calibration_status,
+  ];
+  if (statuses.includes("unavailable")) return "unavailable";
+  if (statuses.includes("demo")) return "demo";
+  if (statuses.includes("provisional")) return "provisional";
+  return "verified";
+}
 
 function scoreLabel(score: number) {
   if (score >= 80) return "Excellent";
@@ -44,10 +64,32 @@ function scoreLabel(score: number) {
   return "Perlu perbaikan";
 }
 
-function roadFeasibility(score: number): string {
-  if (score >= 80) return "Baik";
-  if (score >= 60) return "Cukup";
-  return "Perlu tinjauan";
+function download(name: string, data: unknown) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function fileName(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "rute-kulon-progo";
+}
+
+function featureLabel(context: MapContext | null, selected: SelectedFeature | null) {
+  if (!context || !selected) return "";
+  const collections = {
+    existing_route: context.existing_routes,
+    population: context.population,
+    property_go: context.property_go,
+    public_facility: context.public_facilities,
+  };
+  const feature = collections[selected.kind].features.find((item) => item.properties.id === selected.id);
+  if (!feature) return "Objek peta";
+  const properties = feature.properties as Record<string, unknown>;
+  if (selected.kind === "population") return `Kepadatan ${String(properties.density_band || "tidak diketahui").replaceAll("_", " ")}`;
+  return String(properties.label || properties.name || properties.id || "Objek peta");
 }
 
 const demoRoute: LineString = {
@@ -62,83 +104,273 @@ const demoRoute: LineString = {
   ],
 };
 
-export default function Workspace() {
-  const store = useStore();
-  const mapRef = useRef<HTMLDivElement>(null);
-  const [showExport, setShowExport] = useState(false);
+function singleRoute(data: MapGeoJSON): LineString | null {
+  const features = data.type === "FeatureCollection" ? data.features : [data];
+  return features.length === 1 && features[0].geometry.type === "LineString"
+    ? features[0].geometry
+    : null;
+}
 
-  const analyze = useCallback(async (nextRoute = store.route) => {
+function snapEndpoint(value: unknown): SnapEndpoint | null {
+  if (!value || typeof value !== "object") return null;
+  const endpoint = value as Partial<SnapEndpoint>;
+  const validPosition = (position: unknown): position is Position => Array.isArray(position)
+    && position.length === 2
+    && position.every(Number.isFinite);
+  return validPosition(endpoint.input) && validPosition(endpoint.snapped) && Number.isFinite(endpoint.distance_meters)
+    ? endpoint as SnapEndpoint
+    : null;
+}
+
+function normalizeSnapPreview(value: unknown): SnapPreview | null {
+  if (!value || typeof value !== "object") return null;
+  const preview = value as Partial<SnapPreview>;
+  const start = snapEndpoint(preview.endpoints?.start);
+  const end = snapEndpoint(preview.endpoints?.end);
+  return isLineString(preview.route)
+    && Number.isFinite(preview.distance_meters)
+    && Number.isFinite(preview.duration_seconds)
+    && preview.provider === "osrm"
+    && start && end
+    ? { ...preview, endpoints: { start, end } } as SnapPreview
+    : null;
+}
+
+const {
+  pushRouteHistory, addToast, setLoading, setRouteState, setError, setInsight,
+  setAnalysis, saveCurrentToScenario, setInsightLoading, renameScenario,
+  deleteScenario, setActiveTool, undo, redo, canUndo, canRedo, toggleLayer,
+  switchScenario, createScenario, setContext, setMapNotice, addImportedDataset,
+  toggleImportedDataset, removeImportedDataset, setSnapLoading, setSnapPreview,
+} = useStore.getState();
+
+export default function Workspace() {
+  const {
+    routeState, activeTool, route, context, analysis, insight, error, mapNotice,
+    loading, insightLoading, layers, scenarios, activeScenarioId, pointCount,
+    routeLengthKm, progressStep, importedDatasets, snapLoading, snapPreview,
+  } = useStore(useShallow((state) => ({
+    routeState: state.routeState,
+    activeTool: state.activeTool,
+    route: state.route,
+    context: state.context,
+    analysis: state.analysis,
+    insight: state.insight,
+    error: state.error,
+    mapNotice: state.mapNotice,
+    loading: state.loading,
+    insightLoading: state.insightLoading,
+    layers: state.layers,
+    scenarios: state.scenarios,
+    activeScenarioId: state.activeScenarioId,
+    pointCount: state.pointCount,
+    routeLengthKm: state.routeLengthKm,
+    progressStep: state.progressStep,
+    importedDatasets: state.importedDatasets,
+    snapLoading: state.snapLoading,
+    snapPreview: state.snapPreview,
+  })));
+  const analysisRequest = useRef<AbortController | null>(null);
+  const insightRequest = useRef<AbortController | null>(null);
+  const snapRequest = useRef<AbortController | null>(null);
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [showExport, setShowExport] = useState(false);
+  const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
+  const [focusRequest, setFocusRequest] = useState<(SelectedFeature & { nonce: number }) | null>(null);
+  const [datasetFitRequest, setDatasetFitRequest] = useState<{ id: string; nonce: number } | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+
+  const cancelRequests = useCallback(() => {
+    analysisRequest.current?.abort();
+    insightRequest.current?.abort();
+    snapRequest.current?.abort();
+    analysisRequest.current = null;
+    insightRequest.current = null;
+    snapRequest.current = null;
+    useStore.setState({ loading: false, insightLoading: false, snapLoading: false, progressStep: 0 });
+  }, []);
+
+  const changeRoute = useCallback((nextRoute: LineString | null) => {
+    cancelRequests();
+    pushRouteHistory(nextRoute);
+  }, [cancelRequests]);
+
+  const analyze = useCallback(async (requestedRoute?: LineString) => {
+    const nextRoute = requestedRoute || useStore.getState().route;
     if (!nextRoute) return;
-    // Frontend validation
     if (nextRoute.coordinates.length < 2) {
-      store.addToast("Rute minimal 2 titik", "error");
+      addToast("Rute minimal 2 titik", "error");
       return;
     }
-    if (store.routeLengthKm < 0.01) {
-      store.addToast("Rute terlalu pendek (min 10 m)", "error");
+    if (useStore.getState().routeLengthKm < 0.01) {
+      addToast("Rute terlalu pendek (min 10 m)", "error");
       return;
     }
-    // Reset & start progress
+    cancelRequests();
+    const controller = new AbortController();
+    analysisRequest.current = controller;
     useStore.setState({ progressStep: 0 });
-    store.setLoading(true);
-    store.setRouteState("analyzing");
-    store.setError("");
-    store.setInsight(null);
+    setLoading(true);
+    setRouteState("analyzing");
+    setError("");
+    setInsight(null);
     let result: AnalysisResult;
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ route: nextRoute }),
+        signal: controller.signal,
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Analisis gagal dijalankan.");
       result = payload;
-      store.setAnalysis(payload);
+      setAnalysis(payload);
     } catch (caught) {
-      store.setError(caught instanceof Error ? caught.message : "Analisis gagal dijalankan.");
-      store.setLoading(false);
-      store.setRouteState("ready");
+      if ((caught as Error).name === "AbortError") return;
+      setError(caught instanceof Error ? caught.message : "Analisis gagal dijalankan.");
+      setLoading(false);
+      setRouteState("ready");
       return;
     }
-    store.setLoading(false);
-    store.setRouteState("analyzed");
-    store.saveCurrentToScenario();
+    analysisRequest.current = null;
+    setLoading(false);
+    setRouteState("analyzed");
+    saveCurrentToScenario();
 
-    store.setInsightLoading(true);
+    setInsightLoading(true);
+    const insightController = new AbortController();
+    insightRequest.current = insightController;
     try {
       const insightResponse = await fetch("/api/insight", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(result),
+        signal: insightController.signal,
       });
       const narrative = await insightResponse.json();
-      if (insightResponse.ok) store.setInsight(narrative);
+      if (insightResponse.ok) setInsight(narrative);
     } catch {
     } finally {
-      store.setInsightLoading(false);
+      if (insightRequest.current === insightController) {
+        insightRequest.current = null;
+        setInsightLoading(false);
+      }
     }
-  }, [store]);
+  }, [cancelRequests]);
 
   const applyRecommendation = useCallback(async () => {
-    const recommended = store.analysis?.recommendation?.route_geojson;
+    const recommended = analysis?.recommendation?.route_geojson;
     if (!recommended) return;
-    store.pushRouteHistory(recommended);
-    store.addToast("Rekomendasi diterapkan. Mengevaluasi ulang...", "info");
+    changeRoute(recommended);
+    addToast("Rekomendasi diterapkan. Mengevaluasi ulang...", "info");
     await analyze(recommended);
-  }, [store, analyze]);
+  }, [analysis, analyze, changeRoute]);
 
   const loadDemo = useCallback(() => {
-    store.pushRouteHistory(demoRoute);
-    store.addToast("Demo route dimuat", "success");
-  }, [store]);
+    changeRoute(demoRoute);
+    addToast("Rute contoh Wates dimuat", "success");
+  }, [changeRoute]);
 
-  // Animated progress
-  const progressStep = useStore((s) => s.progressStep);
-  const isLoading = useStore((s) => s.loading);
-  const routeStateVal = useStore((s) => s.routeState);
+  const snapToRoad = useCallback(async () => {
+    const currentRoute = useStore.getState().route;
+    if (!currentRoute) return;
+    cancelRequests();
+    const controller = new AbortController();
+    snapRequest.current = controller;
+    setSnapLoading(true);
+    try {
+      const response = await fetch("/api/route-snap", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ route: currentRoute }),
+        signal: controller.signal,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Rute belum dapat mengikuti jaringan jalan.");
+      const preview = normalizeSnapPreview(payload);
+      if (!preview) throw new Error("Layanan jalan mengembalikan geometri yang tidak valid.");
+      setActiveTool("pan");
+      setSnapPreview(preview);
+      addToast("Preview rute jalan siap diperiksa", "success");
+    } catch (caught) {
+      if ((caught as Error).name !== "AbortError") {
+        addToast(caught instanceof Error ? caught.message : "Layanan pencarian jalan tidak tersedia.", "error");
+      }
+    } finally {
+      if (snapRequest.current === controller) {
+        snapRequest.current = null;
+        setSnapLoading(false);
+      }
+    }
+  }, [cancelRequests]);
+
+  const applySnapPreview = useCallback(() => {
+    const preview = useStore.getState().snapPreview;
+    if (!preview) return;
+    changeRoute(preview.route);
+    addToast("Rute jalan diterapkan", "success");
+  }, [changeRoute]);
+
+  const cancelSnapPreview = useCallback(() => setSnapPreview(null), []);
+
+  const importFile = useCallback(async (file: File) => {
+    if (!/\.geojson$|\.json$/i.test(file.name)) throw new Error("Gunakan file .geojson atau .json.");
+    if (file.size > 10 * 1024 * 1024) throw new Error("Ukuran file maksimal 10 MB.");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      throw new Error("File bukan JSON yang valid.");
+    }
+    if (parsed && typeof parsed === "object" && (parsed as { type?: string }).type === "FeatureCollection") {
+      const features = (parsed as { features?: unknown }).features;
+      if (Array.isArray(features) && features.length > 5000) throw new Error("FeatureCollection maksimal 5.000 fitur.");
+    }
+    const data = normalizeMapGeoJSON(parsed);
+    if (!data) throw new Error("GeoJSON tidak valid atau berisi geometri yang belum didukung.");
+    setSnapPreview(null);
+
+    const importedRoute = singleRoute(data);
+    if (importedRoute) {
+      changeRoute(importedRoute);
+      renameScenario(useStore.getState().activeScenarioId, file.name.replace(/\.(geo)?json$/i, ""));
+      setActiveTool("pan");
+      addToast(`Rute ${file.name} dimuat`, "success");
+      return;
+    }
+
+    const id = `${file.name}-${file.lastModified}-${Date.now()}`;
+    if (!addImportedDataset({ id, name: file.name, data, visible: true })) return;
+    setDatasetFitRequest({ id, nonce: Date.now() });
+    addToast(`Dataset ${file.name} ditampilkan`, "success");
+  }, [changeRoute]);
+
+  const importFirstFile = useCallback(async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    try {
+      await importFile(file);
+    } catch (caught) {
+      addToast(caught instanceof Error ? caught.message : "Dataset gagal dimuat.", "error");
+    }
+  }, [importFile]);
+
+  const handleDrop = useCallback((event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    setDragActive(false);
+    void importFirstFile(event.dataTransfer.files);
+  }, [importFirstFile, setDragActive]);
+
+  const handleFeatureSelect = useCallback((feature: SelectedFeature) => {
+    setSelectedFeature(feature);
+    setFocusRequest({ ...feature, nonce: Date.now() });
+  }, [setFocusRequest, setSelectedFeature]);
+
+  useEffect(() => cancelRequests, [cancelRequests]);
+
   useEffect(() => {
-    if (!isLoading && routeStateVal !== "analyzing") {
+    if (!loading && routeState !== "analyzing") {
       useStore.setState({ progressStep: 0 });
       return;
     }
@@ -152,37 +384,30 @@ export default function Workspace() {
       }
     }, 400);
     return () => clearInterval(tick);
-  }, [isLoading, routeStateVal]);
+  }, [loading, routeState]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
 
       switch (e.key.toLowerCase()) {
-        case "v": store.setActiveTool("select"); break;
-        case "d": store.setActiveTool("draw"); break;
-        case "e": store.setActiveTool("edit"); break;
-        case " ":
-          e.preventDefault();
-          store.setActiveTool(store.activeTool === "pan" ? "select" : "pan");
-          break;
+        case "d": setActiveTool("draw"); break;
+        case "e": if (useStore.getState().route) setActiveTool("edit"); break;
         case "escape":
-          store.setActiveTool("select");
+          setActiveTool("pan");
           break;
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         e.preventDefault();
-        if (e.shiftKey) store.redo();
-        else store.undo();
+        if (e.shiftKey) redo();
+        else undo();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [store]);
+  }, []);
 
-  // AI insight paragraphs
   function aiParagraphs(a: AnalysisResult): string[] {
     const b = a.baseline;
     const lines: string[] = [];
@@ -193,16 +418,18 @@ export default function Workspace() {
       lines.push(`Overlap ${b.overlap_pct}% masih dalam toleransi perencanaan.`);
     }
     if (a.recommendation) {
-      lines.push(`Geser segmen ${a.recommendation.distance_meters} m ke ${directionLabel[a.recommendation.direction]} untuk meningkatkan cakupan.`);
+      lines.push(`Geser seluruh rute ${a.recommendation.distance_meters} m ke ${directionLabel[a.recommendation.direction]} untuk meningkatkan cakupan.`);
     }
     return lines;
   }
 
-  const {
-    routeState, activeTool, route, context, analysis, insight, error, mapNotice,
-    loading, insightLoading, layers, scenarios, activeScenarioId,
-    pointCount, routeLengthKm, settings,
-  } = store;
+  const activeScenario = scenarios.find((scenario) => scenario.id === activeScenarioId) || scenarios[0];
+  const selectedLabel = featureLabel(context, selectedFeature);
+  const readiness = dataReadiness(context);
+  const verifiedSourceCount = context?.sources.filter((source) => source.status === "verified").length || 0;
+  const maxSnapEndpointShift = snapPreview
+    ? Math.max(snapPreview.endpoints.start.distance_meters, snapPreview.endpoints.end.distance_meters)
+    : 0;
 
   return (
     <main className="workspace">
@@ -213,29 +440,33 @@ export default function Workspace() {
           <Link href="/" aria-label="Kembali ke beranda"><ArrowLeft size={18} /></Link>
           <span className="brand-mark"><RouteIcon size={17} /></span>
           <div>
-            <strong>{context?.study_area.properties.name || "Bandung Corridor Study"}</strong>
-            <span>Bandung Timur · Evaluasi aksesibilitas rute angkutan umum</span>
+            <strong>{context?.study_area.properties.name || "Kabupaten Kulon Progo"}</strong>
+            <span>Daerah Istimewa Yogyakarta · Evaluasi koridor transit</span>
           </div>
           <div className="scenario-tabs">
             {scenarios.map((s) => (
               <button
                 key={s.id}
                 className={`scenario-tab ${s.id === activeScenarioId ? "active" : ""}`}
-                onClick={() => store.switchScenario(s.id)}
+                aria-pressed={s.id === activeScenarioId}
+                onClick={() => {
+                  cancelRequests();
+                  switchScenario(s.id);
+                }}
               >
                 {s.name}
               </button>
             ))}
-            <button className="scenario-add" title="Buat scenario baru" onClick={() => store.createScenario()}>
+            <button className="scenario-add" title="Buat skenario baru" aria-label="Buat skenario baru" onClick={() => createScenario()}>
               <Plus size={12} />
             </button>
           </div>
         </div>
         <div className="workspace-meta">
-          <span className="save-state"><i /> {analysis ? "Saved" : "Unsaved"}</span>
+          <span className="save-state"><i /> Sesi lokal</span>
           <span className="divider" />
-          <Link href="/#metodologi" className="header-link">Report</Link>
-          <button className="header-link" onClick={() => setShowExport(true)}><Download size={12} /> Ekspor</button>
+          <Link href="/#metodologi" className="header-link">Metodologi</Link>
+          <button className="header-link" disabled={!route} onClick={() => setShowExport(true)}><Download size={12} /> Ekspor</button>
         </div>
       </header>
 
@@ -244,45 +475,71 @@ export default function Workspace() {
           <p className="panel-kicker">PROJECT</p>
           <div className="project-info">
             <RouteIcon size={17} />
-            <h3>Kab. Kulonprogo</h3>
+            <h3>Kab. Kulon Progo</h3>
           </div>
           <span className="project-loc">DIY Yogyakarta</span>
-          <input
-            className="route-name-input"
-            value={store.routeName}
-            onChange={(e) => store.setRouteName(e.target.value)}
-            placeholder="Nama rute"
-          />
-          <button className="load-demo-btn" onClick={loadDemo}><Play size={12} /> Load Demo Route</button>
+          <div className="route-name-row">
+            <input
+              className="route-name-input"
+              value={activeScenario.name}
+              onChange={(e) => renameScenario(activeScenarioId, e.target.value)}
+              placeholder="Nama rute"
+            />
+            <button
+              type="button"
+              className="route-delete-btn"
+              aria-label="Hapus skenario aktif"
+              title="Hapus skenario aktif"
+              disabled={scenarios.length === 1}
+              onClick={() => deleteScenario(activeScenarioId)}
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+          <button className="load-demo-btn" onClick={loadDemo}><Play size={12} /> Muat rute contoh Wates</button>
         </div>
 
         <div className="panel-block">
           <p className="panel-kicker">TOOLS</p>
           <div className="tool-stack">
             <div className="tool-row">
-              {(["select", "pan", "draw", "edit"] as const).map((tool) => (
+              {(["pan", "draw", "edit"] as const).map((tool) => (
                 <button
                   key={tool}
                   className={`tool-btn${activeTool === tool ? " active-tool" : ""}`}
-                  onClick={() => store.setActiveTool(activeTool === tool ? "select" : tool)}
+                  disabled={tool === "edit" && !route}
+                  onClick={() => setActiveTool(activeTool === tool ? "pan" : tool)}
                 >
-                  {tool === "select" ? <MousePointer2 size={14} /> : tool === "pan" ? <Hand size={14} /> : <Pencil size={14} />}
+                  {tool === "pan" ? <Hand size={14} /> : <Pencil size={14} />}
                   {toolLabels[tool]}
                 </button>
               ))}
+              <button className="tool-btn" disabled={!route} onClick={() => changeRoute(null)}>
+                <Trash2 size={14} /> Hapus
+              </button>
             </div>
             <div className="tool-row">
-              <button className="tool-btn" onClick={() => store.undo()} disabled={!store.canUndo()}>
-                <Undo2 size={14} /> Undo
+              <button className="tool-btn" onClick={() => undo()} disabled={!canUndo()}>
+                <Undo2 size={14} /> Urungkan
               </button>
-              <button className="tool-btn" onClick={() => store.redo()} disabled={!store.canRedo()}>
-                <Redo2 size={14} /> Redo
+              <button className="tool-btn" onClick={() => redo()} disabled={!canRedo()}>
+                <Redo2 size={14} /> Ulangi
               </button>
-              <button className="tool-btn primary-btn" disabled={!route || loading} onClick={() => analyze()}>
+              <button className="tool-btn primary-btn" disabled={!route || loading || Boolean(snapPreview)} onClick={() => analyze()}>
                 {loading ? <LoaderCircle className="spin" size={14} /> : <Play size={14} fill="currentColor" />}
                 Evaluasi
               </button>
             </div>
+            <button className="tool-btn snap-road-btn" disabled={!route || loading || snapLoading || Boolean(snapPreview)} onClick={snapToRoad}>
+              {snapLoading ? <LoaderCircle className="spin" size={14} /> : <RouteIcon size={14} />}
+              {snapLoading ? "Mencari jaringan jalan…" : "Ikuti jalan"}
+            </button>
+            {activeTool === "edit" && (
+              <p className="tool-hint">Tarik titik solid untuk mengubah bentuk. Tarik titik transparan di tengah segmen untuk menambah titik.</p>
+            )}
+            {activeTool === "pan" && route && (
+              <p className="tool-hint">Tarik garis untuk memindahkan rute, lalu pilih Ikuti jalan jika perlu merapikannya ke OSM.</p>
+            )}
           </div>
         </div>
 
@@ -296,64 +553,162 @@ export default function Workspace() {
                 layer === "property" ? "Property GO" :
                 layer === "facilities" ? "Fasilitas publik" : "Buffer layanan"
               }</span>
-              <input type="checkbox" checked={layers[layer]} onChange={() => store.toggleLayer(layer)} />
+              <input type="checkbox" checked={layers[layer]} onChange={() => toggleLayer(layer)} />
             </label>
           ))}
         </div>
 
-        <div className="panel-block settings-block">
-          <div className="panel-label">PENGATURAN ANALISIS</div>
-          <label>Radius aksesibilitas <output>{settings.bufferRadius} m</output></label>
+        <div className="panel-block dataset-block">
+          <div className="panel-label"><FileUp size={16} /> Dataset</div>
+          <div className="dataset-source">
+            <span><strong>Batas Kulon Progo</strong><small>OSM relation 5615252 · ODbL</small></span>
+            <Check size={15} />
+          </div>
+          {importedDatasets.map((dataset) => (
+            <div className={`dataset-source imported${dataset.visible ? "" : " is-hidden"}`} key={dataset.id}>
+              <span><strong>{dataset.name}</strong><small>Layer GeoJSON lokal</small></span>
+              <div className="dataset-actions">
+                <input
+                  type="checkbox"
+                  checked={dataset.visible}
+                  aria-label={`Tampilkan ${dataset.name}`}
+                  onChange={() => toggleImportedDataset(dataset.id)}
+                />
+                <button type="button" aria-label={`Hapus ${dataset.name}`} onClick={() => removeImportedDataset(dataset.id)}><X size={13} /></button>
+              </div>
+            </div>
+          ))}
           <input
-            type="range" min="300" max="800" step="100"
-            value={settings.bufferRadius}
-            onChange={(e) => store.setSettings({ bufferRadius: Number(e.target.value) })}
-            aria-label="Radius aksesibilitas"
+            ref={fileInput}
+            className="dataset-input"
+            type="file"
+            accept=".geojson,.json,application/geo+json,application/json"
+            onChange={(event) => {
+              void importFirstFile(event.target.files);
+              event.target.value = "";
+            }}
           />
-          <label style={{ marginTop: "10px", display: "flex", justifyContent: "space-between", color: "var(--muted)", fontSize: "10px" }}>
-            Prioritas
-            <select
-              value={settings.priority}
-              onChange={(e) => store.setSettings({ priority: e.target.value as Store["settings"]["priority"] })}
-              style={{ fontSize: "9px", padding: "2px 4px", border: "1px solid var(--line)", borderRadius: "4px", color: "var(--ink)", background: "#fff" }}
-            >
-              <option value="balanced">Seimbang</option>
-              <option value="coverage">Max Coverage</option>
-              <option value="overlap">Min Overlap</option>
-              <option value="residential">Serve Residential</option>
-            </select>
-          </label>
-          <p>Bobot: populasi/km 62,5% · anti-overlap 37,5%</p>
+          <button type="button" className="dataset-drop-button" onClick={() => fileInput.current?.click()}>
+            <FileUp size={14} /> Pilih atau tarik GeoJSON
+          </button>
+          <p>Polygon menjadi overlay ({importedDatasets.length}/{MAX_IMPORTED_DATASETS}); satu LineString menjadi rute. Overlay perlu diimpor ulang setelah reload.</p>
+        </div>
+
+        <div className="panel-block settings-block">
+          <div className="panel-label">METODOLOGI TETAP</div>
+          <div className="methodology-summary">
+            <span><b>{context?.methodology.buffer_meters || 500} m</b> buffer layanan</span>
+            <span><b>{Math.round((context?.methodology.population_weight || 0.625) * 100)}%</b> populasi/km</span>
+            <span><b>{Math.round((context?.methodology.overlap_weight || 0.375) * 100)}%</b> anti-overlap</span>
+          </div>
+          <p>Nilai dihitung di PostGIS dan tidak dapat diubah dari browser.</p>
+        </div>
+
+        <div className="panel-block data-readiness">
+          <div className="panel-label">
+            KESIAPAN DATA
+            <span className={`readiness-badge ${readiness}`}>{sourceStatusLabel[readiness]}</span>
+          </div>
+          {context ? (
+            <>
+              <div className="source-readiness-list">
+                {context.sources.map((source) => (
+                  <div key={source.source_key} title={`${source.provider} · ${source.limitation}`}>
+                    <span>{source.dataset_name}</span>
+                    <b className={source.status}>{sourceStatusLabel[source.status]}</b>
+                  </div>
+                ))}
+                <div title="Target populasi per kilometer harus disetujui sebelum rilis publik.">
+                  <span>Kalibrasi target skor</span>
+                  <b className={context.methodology.target_calibration_status}>
+                    {sourceStatusLabel[context.methodology.target_calibration_status]}
+                  </b>
+                </div>
+              </div>
+              <p>{verifiedSourceCount}/{context.sources.length} sumber berstatus terverifikasi.</p>
+            </>
+          ) : (
+            <p>Hubungkan Supabase untuk membaca provenance dan status validasi.</p>
+          )}
         </div>
       </aside>
 
-      <section className="map-canvas" aria-label="Peta evaluasi transit">
-        <div className="map-toolbar">
-          <button title="Perbesar" onClick={() => {}}>+</button>
-          <button title="Perkecil" onClick={() => {}}>−</button>
-          <button title="Sesuaikan tampilan" onClick={() => {}}>Fit</button>
-        </div>
+      <section
+        className={`map-canvas${dragActive ? " is-dragging" : ""}`}
+        aria-label="Peta evaluasi transit"
+        onDragEnter={(event) => {
+          if (event.dataTransfer.types.includes("Files")) setDragActive(true);
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false);
+        }}
+        onDrop={handleDrop}
+      >
         <TransitMap
-          ref={mapRef}
           route={route}
-          onRouteChange={store.pushRouteHistory}
+          onRouteChange={changeRoute}
           context={context}
-          onContext={store.setContext}
-          onNotice={store.setMapNotice}
+          onContext={setContext}
+          onNotice={setMapNotice}
           analysis={analysis}
           layers={layers}
-          selectedFeature={null}
-          onFeatureSelect={() => {}}
-          focusRequest={null}
+          selectedFeature={selectedFeature}
+          onFeatureSelect={handleFeatureSelect}
+          focusRequest={focusRequest}
+          importedDatasets={importedDatasets}
+          datasetFitRequest={datasetFitRequest}
+          snapPreview={snapPreview}
         />
+        {dragActive && (
+          <div className="map-drop-overlay" aria-hidden="true">
+            <span><FileUp size={24} /></span>
+            <strong>Lepaskan GeoJSON di peta</strong>
+            <small>Maksimal 10 MB</small>
+          </div>
+        )}
+        {snapPreview && (
+          <div className="snap-preview-bar" role="region" aria-label="Preview ikuti jalan">
+            <div className="snap-preview-copy">
+              <span>PREVIEW JARINGAN JALAN</span>
+              <strong>
+                {routeLengthKm.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km
+                <ChevronRight size={14} />
+                {(snapPreview.distance_meters / 1000).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km
+              </strong>
+              {maxSnapEndpointShift > 150 && (
+                <small className="snap-preview-warning">
+                  <CircleAlert size={13} /> Endpoint bergeser hingga {Math.round(maxSnapEndpointShift)} m; periksa koneksi rute.
+                </small>
+              )}
+            </div>
+            <div className="snap-preview-actions">
+              <button type="button" onClick={cancelSnapPreview}>Batalkan</button>
+              <button type="button" className="apply" onClick={applySnapPreview}><Check size={14} /> Terapkan</button>
+            </div>
+          </div>
+        )}
         <div className="map-legend-box">
           <span className="map-legend-title">Legenda</span>
           <div className="map-legend-items">
-            <span><i className="legend-current" /> Current Route</span>
-            <span><i className="legend-recommended" /> Recommended</span>
-            <span><i className="legend-existing" /> Existing</span>
+            <span><i className={snapPreview ? "legend-preview-original" : "legend-current"} /> {snapPreview ? "Rute saat ini" : "Rute usulan"}</span>
+            {snapPreview && <span><i className="legend-snap-candidate" /> Kandidat jalan</span>}
+            <span><i className="legend-recommended" /> Rekomendasi</span>
+            <span><i className="legend-existing" /> Rute eksisting</span>
+            {importedDatasets.some((dataset) => dataset.visible) && <span><i className="legend-imported" /> Dataset impor</span>}
           </div>
         </div>
+        {selectedFeature && (
+          <div className="feature-inspector">
+            <div>
+              <span>OBJEK TERPILIH</span>
+              <strong>{selectedLabel}</strong>
+            </div>
+            <button type="button" aria-label="Tutup detail objek" onClick={() => setSelectedFeature(null)}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
         {mapNotice && <div className="map-notice"><CircleAlert size={15} /> {mapNotice}</div>}
       </section>
 
@@ -404,9 +759,12 @@ export default function Workspace() {
           <div className="result-content">
             <div className="result-heading">
               <div>
-                <p className="panel-kicker">ACCESSIBILITY SCORE</p>
-                <h2>Panel Hasil</h2>
-                <p style={{ margin: "2px 0 0", color: "var(--muted)", fontSize: "9px" }}>Mock Spatial Analysis</p>
+                <p className="panel-kicker">SKOR AKSESIBILITAS</p>
+                <h2>Hasil evaluasi</h2>
+                <p style={{ margin: "2px 0 0", color: "var(--muted)", fontSize: "9px" }}>Perhitungan spasial PostGIS</p>
+                {readiness !== "verified" && (
+                  <p className={`result-readiness ${readiness}`}>Data {sourceStatusLabel[readiness].toLowerCase()} · belum untuk keputusan publik</p>
+                )}
               </div>
               <span className="score-status"><i /> {scoreLabel(analysis.baseline.score)}</span>
             </div>
@@ -418,19 +776,19 @@ export default function Workspace() {
               >
                 <div><strong>{Math.round(analysis.baseline.score)}</strong><span>/ 100</span></div>
               </div>
-              <div><span>Transit Accessibility Score</span><p>Gabungan cakupan populasi per km dan penghindaran overlap.</p></div>
+              <div><span>Skor aksesibilitas transit</span><p>Gabungan cakupan populasi per km dan penghindaran overlap.</p></div>
             </div>
 
             <div className="metrics-grid-6">
               <div className="metric-cell">
                 <div className="metric-label">POPULASI</div>
                 <div className="metric-value">{analysis.baseline.population_covered.toLocaleString("id-ID")}</div>
-                <div className="metric-unit">residents</div>
+                <div className="metric-unit">jiwa terjangkau</div>
               </div>
               <div className="metric-cell">
                 <div className="metric-label">PROPERTY</div>
                 <div className="metric-value">{analysis.baseline.property_go_count.toLocaleString("id-ID")}</div>
-                <div className="metric-unit">area terjangkau</div>
+                <div className="metric-unit">titik aktivitas</div>
               </div>
               <div className="metric-cell">
                 <div className="metric-label">OVERLAP</div>
@@ -440,17 +798,17 @@ export default function Workspace() {
               <div className="metric-cell">
                 <div className="metric-label">PANJANG</div>
                 <div className="metric-value">{analysis.baseline.route_length_km.toLocaleString("id-ID")}</div>
-                <div className="metric-unit">estimasi</div>
+                <div className="metric-unit">kilometer</div>
               </div>
               <div className="metric-cell">
-                <div className="metric-label">JALAN</div>
-                <div className="metric-value">{roadFeasibility(analysis.baseline.score)}</div>
-                <div className="metric-unit">aksesibilitas</div>
+                <div className="metric-label">POPULASI/KM</div>
+                <div className="metric-value">{Math.round(analysis.baseline.population_per_km).toLocaleString("id-ID")}</div>
+                <div className="metric-unit">jiwa per km</div>
               </div>
               <div className="metric-cell">
-                <div className="metric-label">FASILITAS</div>
-                <div className="metric-value">-</div>
-                <div className="metric-unit">sekolah + RS</div>
+                <div className="metric-label">BUFFER</div>
+                <div className="metric-value">{analysis.baseline.formula.buffer_meters}</div>
+                <div className="metric-unit">meter</div>
               </div>
             </div>
 
@@ -479,15 +837,16 @@ export default function Workspace() {
                       { label: "Overlap", base: analysis.baseline.overlap_pct, rec: analysis.recommendation.result.overlap_pct, unit: "%", fmt: (v: number) => `${v}%` },
                       { label: "Panjang", base: analysis.baseline.route_length_km, rec: analysis.recommendation.result.route_length_km, unit: "km", fmt: (v: number) => `${v.toLocaleString("id-ID")} km` },
                       { label: "Property", base: analysis.baseline.property_go_count, rec: analysis.recommendation.result.property_go_count, unit: "", fmt: (v: number) => v.toLocaleString("id-ID") },
-                    ].map(({ label, base, rec, fmt }) => {
+                    ].map(({ label, base, rec, unit, fmt }) => {
                       const delta = rec - base;
+                      const improvement = label === "Overlap" ? delta <= 0 : delta >= 0;
                       return (
                         <tr key={label}>
                           <td>{label}</td>
                           <td>{fmt(base)}</td>
                           <td>{fmt(rec)}</td>
-                          <td className={delta >= 0 ? "delta-pos" : "delta-neg"}>
-                            {delta > 0 ? "+" : ""}{fmt(Math.abs(delta))}
+                          <td className={improvement ? "delta-pos" : "delta-neg"}>
+                            {delta > 0 ? "+" : ""}{delta.toLocaleString("id-ID", { maximumFractionDigits: 2 })}{unit ? ` ${unit}` : ""}
                           </td>
                         </tr>
                       );
@@ -505,6 +864,11 @@ export default function Workspace() {
                   {insight.summary.split(". ").filter(Boolean).map((s, i) => (
                     <p key={i} className="ai-paragraph">{s}.</p>
                   ))}
+                  {insight.actions.length > 0 && (
+                    <ul className="ai-actions">
+                      {insight.actions.map((action) => <li key={action}>{action}</li>)}
+                    </ul>
+                  )}
                   {insight.source === "template" && <small>Narasi fallback deterministik</small>}
                 </div>
               ) : analysis && !insightLoading ? (
@@ -532,8 +896,7 @@ export default function Workspace() {
             )}
 
             <div className="action-row">
-              <button className="secondary-action"><GitCompareArrows size={14} /> Bandingkan Rute</button>
-              <button className="secondary-action"><FileText size={14} /> Ekspor Report</button>
+              <button className="secondary-action" onClick={() => setShowExport(true)}><Download size={14} /> Ekspor hasil</button>
             </div>
           </div>
         )}
@@ -541,11 +904,13 @@ export default function Workspace() {
 
       <footer className="workspace-status">
         <span>
-          <i className={context ? "online" : ""} />
-          {context ? "Layer studi siap" : "Menunggu konfigurasi data"}
+          <i className={readiness === "verified" ? "online" : context ? "warning" : ""} />
+          {context
+            ? `Basemap siap · ${sourceStatusLabel[readiness]}`
+            : "Basemap Kulon Progo siap · data analisis belum terhubung"}
         </span>
         <span style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          {activeTool !== "select" && (
+          {activeTool !== "pan" && (
             <span className="tool-indicator">{toolLabels[activeTool]}</span>
           )}
           {route && (
@@ -565,22 +930,46 @@ export default function Workspace() {
 
       {showExport && (
         <div className="modal-overlay" onClick={() => setShowExport(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Ekspor Hasil</h3>
-            <p>Pilih format untuk mengekspor hasil evaluasi rute ini.</p>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="export-title" onClick={(e) => e.stopPropagation()}>
+            <h3 id="export-title">Ekspor hasil</h3>
+            <p>Unduh geometri rute atau hasil evaluasi sebagai data yang dapat digunakan kembali.</p>
             <div className="modal-options">
-              <div className="modal-option" onClick={() => { store.addToast("PDF simulation — fitur akan datang", "info"); setShowExport(false); }}>
-                <FileText size={20} />
-                <div>PDF Report<small>Laporan lengkap dengan peta dan metrik</small></div>
-              </div>
-              <div className="modal-option" onClick={() => { store.addToast("Image simulation — fitur akan datang", "info"); setShowExport(false); }}>
+              <button
+                type="button"
+                className="modal-option"
+                onClick={() => {
+                  if (!route) return;
+                  download(`${fileName(activeScenario.name)}.geojson`, {
+                    type: "Feature",
+                    geometry: route,
+                    properties: { name: activeScenario.name, crs: "EPSG:4326" },
+                  });
+                  addToast("GeoJSON diunduh", "success");
+                  setShowExport(false);
+                }}
+              >
                 <Download size={20} />
-                <div>Map Image<small>Snapshot peta dengan legenda (PNG)</small></div>
-              </div>
-              <div className="modal-option" onClick={() => { navigator.clipboard.writeText(window.location.href); store.addToast("Link disalin!", "success"); setShowExport(false); }}>
-                <GitCompareArrows size={20} />
-                <div>Share Link<small>Salin tautan ke clipboard</small></div>
-              </div>
+                <div>GeoJSON rute<small>Geometri LineString untuk GIS</small></div>
+              </button>
+              <button
+                type="button"
+                className="modal-option"
+                disabled={!analysis}
+                onClick={() => {
+                  if (!route || !analysis) return;
+                  download(`${fileName(activeScenario.name)}-hasil.json`, {
+                    name: activeScenario.name,
+                    route,
+                    analysis,
+                    insight,
+                  });
+                  addToast("Hasil analisis diunduh", "success");
+                  setShowExport(false);
+                }}
+              >
+                <FileText size={20} />
+                <div>Hasil JSON<small>Metrik, rekomendasi, dan insight</small></div>
+              </button>
             </div>
             <button className="modal-close" onClick={() => setShowExport(false)}>Tutup</button>
           </div>

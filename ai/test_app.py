@@ -1,6 +1,5 @@
-import os
-
-from fastapi.testclient import TestClient
+import pytest
+from fastapi import HTTPException
 
 import ai.app as service
 
@@ -24,10 +23,11 @@ PAYLOAD = {
 
 
 def test_insight_guard_and_fallback(monkeypatch):
-    os.environ["AI_SERVICE_TOKEN"] = "test-token"
-    client = TestClient(service.app)
+    monkeypatch.setenv("AI_SERVICE_TOKEN", "test-token")
+    data = service.VerifiedAnalysis.model_validate(PAYLOAD)
 
-    assert client.post("/insight", json=PAYLOAD).status_code == 401
+    with pytest.raises(HTTPException, match="Invalid service token"):
+        service.insight(data, "")
 
     monkeypatch.setattr(
         service,
@@ -37,18 +37,13 @@ def test_insight_guard_and_fallback(monkeypatch):
             actions=["Bangun 3 halte baru."],
         ),
     )
-    response = client.post(
-        "/insight",
-        json=PAYLOAD,
-        headers={"X-Internal-Token": "test-token"},
-    )
-    assert response.status_code == 200
-    assert response.json()["source"] == "template"
-    assert "999" not in response.text
+    response = service.insight(data, "test-token")
+    assert response.source == "template"
+    assert "999" not in response.summary
 
 
 def test_verified_narrative_is_accepted(monkeypatch):
-    os.environ["AI_SERVICE_TOKEN"] = "test-token"
+    monkeypatch.setenv("AI_SERVICE_TOKEN", "test-token")
     monkeypatch.setattr(
         service,
         "generate",
@@ -57,10 +52,5 @@ def test_verified_narrative_is_accepted(monkeypatch):
             actions=["Tinjau pergeseran 500 meter ke utara."],
         ),
     )
-    response = TestClient(service.app).post(
-        "/insight",
-        json=PAYLOAD,
-        headers={"X-Internal-Token": "test-token"},
-    )
-    assert response.status_code == 200
-    assert response.json()["source"] == "ai"
+    response = service.insight(service.VerifiedAnalysis.model_validate(PAYLOAD), "test-token")
+    assert response.source == "ai"

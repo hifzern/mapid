@@ -7,6 +7,7 @@ export type LineString = {
 
 export type Geometry =
   | LineString
+  | { type: "MultiLineString"; coordinates: Position[][] }
   | { type: "Point"; coordinates: Position }
   | { type: "Polygon"; coordinates: Position[][] }
   | { type: "MultiPolygon"; coordinates: Position[][][] };
@@ -20,6 +21,29 @@ export type Feature<P = Record<string, unknown>> = {
 export type FeatureCollection<P = Record<string, unknown>> = {
   type: "FeatureCollection";
   features: Feature<P>[];
+};
+
+export type MapGeoJSON = Feature | FeatureCollection;
+
+export type ImportedDataset = {
+  id: string;
+  name: string;
+  data: MapGeoJSON;
+  visible: boolean;
+};
+
+export type SnapEndpoint = {
+  input: Position;
+  snapped: Position;
+  distance_meters: number;
+};
+
+export type SnapPreview = {
+  route: LineString;
+  distance_meters: number;
+  duration_seconds: number;
+  provider: "osrm";
+  endpoints: { start: SnapEndpoint; end: SnapEndpoint };
 };
 
 export type RouteScore = {
@@ -136,4 +160,60 @@ export function isLineString(value: unknown): value is LineString {
         && point.length === 2
         && point.every(Number.isFinite),
     );
+}
+
+function isPosition(value: unknown): value is Position {
+  return Array.isArray(value)
+    && value.length === 2
+    && value.every(Number.isFinite)
+    && value[0] >= -180 && value[0] <= 180
+    && value[1] >= -90 && value[1] <= 90;
+}
+
+function isLine(value: unknown): value is Position[] {
+  return Array.isArray(value) && value.length >= 2 && value.every(isPosition);
+}
+
+function isGeometry(value: unknown): value is Geometry {
+  if (!value || typeof value !== "object") return false;
+  const geometry = value as { type?: string; coordinates?: unknown };
+  if (geometry.type === "Point") return isPosition(geometry.coordinates);
+  if (geometry.type === "LineString") return isLine(geometry.coordinates);
+  if (geometry.type === "MultiLineString") {
+    return Array.isArray(geometry.coordinates) && geometry.coordinates.length > 0 && geometry.coordinates.every(isLine);
+  }
+  if (geometry.type === "Polygon") {
+    return Array.isArray(geometry.coordinates) && geometry.coordinates.length > 0
+      && geometry.coordinates.every((ring) => Array.isArray(ring) && ring.length >= 4 && ring.every(isPosition));
+  }
+  if (geometry.type === "MultiPolygon") {
+    return Array.isArray(geometry.coordinates) && geometry.coordinates.length > 0
+      && geometry.coordinates.every((polygon) => Array.isArray(polygon) && polygon.length > 0
+        && polygon.every((ring) => Array.isArray(ring) && ring.length >= 4 && ring.every(isPosition)));
+  }
+  return false;
+}
+
+function normalizeFeature(value: unknown): Feature | null {
+  if (!value || typeof value !== "object") return null;
+  const feature = value as { type?: string; geometry?: unknown; properties?: unknown };
+  if (feature.type !== "Feature" || !isGeometry(feature.geometry)) return null;
+  if (feature.properties !== null && (typeof feature.properties !== "object" || Array.isArray(feature.properties))) return null;
+  return { type: "Feature", geometry: feature.geometry, properties: (feature.properties || {}) as Record<string, unknown> };
+}
+
+export function normalizeMapGeoJSON(value: unknown): MapGeoJSON | null {
+  const geometry = isGeometry(value) ? value : null;
+  if (geometry) return { type: "Feature", geometry, properties: {} };
+
+  const feature = normalizeFeature(value);
+  if (feature) return feature;
+
+  if (!value || typeof value !== "object") return null;
+  const collection = value as { type?: string; features?: unknown };
+  if (collection.type !== "FeatureCollection" || !Array.isArray(collection.features)
+    || collection.features.length === 0 || collection.features.length > 5000) return null;
+  const features = collection.features.map(normalizeFeature);
+  if (features.some((item) => !item)) return null;
+  return { type: "FeatureCollection", features: features as Feature[] };
 }
