@@ -1,4 +1,5 @@
 export type Position = [number, number];
+export type RouteChangeSource = "draw" | "edit" | "drag";
 
 export type LineString = {
   type: "LineString";

@@ -9,8 +9,9 @@ const landingBody = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const landingHeading = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
 
 export const metadata: Metadata = {
-  title: "transight — Analisis Transit Kabupaten Kulon Progo",
+  title: "Transight — Analisis Transit Kabupaten Kulon Progo",
   description: "Evaluasi koridor Kabupaten Kulon Progo dengan analisis spasial transparan dan data ilustratif.",
+  icons: { icon: "/brand/transight-icon.png" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

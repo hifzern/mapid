@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -26,7 +27,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, DragEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type { AnalysisResult, LineString, MapContext, MapGeoJSON, Position, SelectedFeature, SnapEndpoint, SnapPreview, SourceStatus } from "@/lib/types";
+import type { AnalysisResult, LineString, MapContext, MapGeoJSON, Position, RouteChangeSource, SelectedFeature, SnapEndpoint, SnapPreview, SourceStatus } from "@/lib/types";
 import { isLineString, normalizeMapGeoJSON } from "@/lib/types";
 import { MAX_IMPORTED_DATASETS, useStore } from "@/lib/workspace-store";
 import ToastContainer from "./ToastContainer";
@@ -134,6 +135,20 @@ function normalizeSnapPreview(value: unknown): SnapPreview | null {
     && start && end
     ? { ...preview, endpoints: { start, end } } as SnapPreview
     : null;
+}
+
+async function requestRoadPreview(route: LineString, signal: AbortSignal) {
+  const response = await fetch("/api/route-snap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ route }),
+    signal,
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "Rute belum dapat mengikuti jaringan jalan.");
+  const preview = normalizeSnapPreview(payload);
+  if (!preview) throw new Error("Layanan jalan mengembalikan geometri yang tidak valid.");
+  return preview;
 }
 
 const {
@@ -262,40 +277,54 @@ export default function Workspace() {
   const applyRecommendation = useCallback(async () => {
     const recommended = analysis?.recommendation?.route_geojson;
     if (!recommended) return;
-    changeRoute(recommended);
+    cancelRequests();
+    const controller = new AbortController();
+    snapRequest.current = controller;
+    setSnapLoading(true);
+    let roadRoute: LineString;
+    try {
+      roadRoute = (await requestRoadPreview(recommended, controller.signal)).route;
+    } catch (caught) {
+      if ((caught as Error).name !== "AbortError") {
+        addToast("Rekomendasi belum diterapkan karena jaringan jalan tidak menemukan rute yang sesuai.", "error");
+      }
+      return;
+    } finally {
+      if (snapRequest.current === controller) {
+        snapRequest.current = null;
+        setSnapLoading(false);
+      }
+    }
+    changeRoute(roadRoute);
     addToast("Rekomendasi diterapkan. Mengevaluasi ulang...", "info");
-    await analyze(recommended);
-  }, [analysis, analyze, changeRoute]);
+    await analyze(roadRoute);
+  }, [analysis, analyze, cancelRequests, changeRoute]);
 
   const loadDemo = useCallback(() => {
     changeRoute(demoRoute);
     addToast("Rute contoh Wates dimuat", "success");
   }, [changeRoute]);
 
-  const snapToRoad = useCallback(async () => {
-    const currentRoute = useStore.getState().route;
+  const snapToRoad = useCallback(async (requestedRoute?: LineString, automatic = false) => {
+    const currentRoute = requestedRoute || useStore.getState().route;
     if (!currentRoute) return;
     cancelRequests();
     const controller = new AbortController();
     snapRequest.current = controller;
     setSnapLoading(true);
     try {
-      const response = await fetch("/api/route-snap", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ route: currentRoute }),
-        signal: controller.signal,
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Rute belum dapat mengikuti jaringan jalan.");
-      const preview = normalizeSnapPreview(payload);
-      if (!preview) throw new Error("Layanan jalan mengembalikan geometri yang tidak valid.");
+      const preview = await requestRoadPreview(currentRoute, controller.signal);
       setActiveTool("pan");
       setSnapPreview(preview);
-      addToast("Preview rute jalan siap diperiksa", "success");
+      if (!automatic) addToast("Preview rute jalan siap diperiksa", "success");
     } catch (caught) {
       if ((caught as Error).name !== "AbortError") {
-        addToast(caught instanceof Error ? caught.message : "Layanan pencarian jalan tidak tersedia.", "error");
+        addToast(
+          automatic
+            ? "Jaringan jalan tidak ditemukan; garis bebas tetap dipakai."
+            : caught instanceof Error ? caught.message : "Layanan pencarian jalan tidak tersedia.",
+          automatic ? "info" : "error",
+        );
       }
     } finally {
       if (snapRequest.current === controller) {
@@ -313,6 +342,11 @@ export default function Workspace() {
   }, [changeRoute]);
 
   const cancelSnapPreview = useCallback(() => setSnapPreview(null), []);
+
+  const handleMapRouteChange = useCallback((nextRoute: LineString | null, source?: RouteChangeSource) => {
+    changeRoute(nextRoute);
+    if (nextRoute && source) void snapToRoad(nextRoute, true);
+  }, [changeRoute, snapToRoad]);
 
   const importFile = useCallback(async (file: File) => {
     if (!/\.geojson$|\.json$/i.test(file.name)) throw new Error("Gunakan file .geojson atau .json.");
@@ -437,9 +471,13 @@ export default function Workspace() {
 
       <header className="workspace-header">
         <div className="workspace-title">
-          <Link href="/" aria-label="Kembali ke beranda"><ArrowLeft size={18} /></Link>
-          <span className="brand-mark"><RouteIcon size={17} /></span>
-          <div>
+          <Link href="/" className="workspace-back" aria-label="Kembali ke beranda"><ArrowLeft size={18} /></Link>
+          <Link href="/" className="workspace-brand" aria-label="Transight">
+            <Image className="workspace-brand-wordmark" src="/brand/transight-wordmark.png" alt="Transight" width={626} height={182} priority />
+            <Image className="workspace-brand-icon" src="/brand/transight-icon.png" alt="" width={251} height={250} priority />
+          </Link>
+          <span className="workspace-header-divider" />
+          <div className="workspace-context">
             <strong>{context?.study_area.properties.name || "Kabupaten Kulon Progo"}</strong>
             <span>Daerah Istimewa Yogyakarta · Evaluasi koridor transit</span>
           </div>
@@ -465,14 +503,14 @@ export default function Workspace() {
         <div className="workspace-meta">
           <span className="save-state"><i /> Sesi lokal</span>
           <span className="divider" />
-          <Link href="/#metodologi" className="header-link">Metodologi</Link>
+          <Link href="/#method" className="header-link">Metodologi</Link>
           <button className="header-link" disabled={!route} onClick={() => setShowExport(true)}><Download size={12} /> Ekspor</button>
         </div>
       </header>
 
       <aside className="tool-panel">
-        <div className="panel-block" style={{ paddingBottom: "16px" }}>
-          <p className="panel-kicker">PROJECT</p>
+        <div className="panel-block project-block">
+          <p className="panel-kicker">PROYEK</p>
           <div className="project-info">
             <RouteIcon size={17} />
             <h3>Kab. Kulon Progo</h3>
@@ -500,7 +538,7 @@ export default function Workspace() {
         </div>
 
         <div className="panel-block">
-          <p className="panel-kicker">TOOLS</p>
+          <p className="panel-kicker">ALAT</p>
           <div className="tool-stack">
             <div className="tool-row">
               {(["pan", "draw", "edit"] as const).map((tool) => (
@@ -530,15 +568,18 @@ export default function Workspace() {
                 Evaluasi
               </button>
             </div>
-            <button className="tool-btn snap-road-btn" disabled={!route || loading || snapLoading || Boolean(snapPreview)} onClick={snapToRoad}>
+            <button className="tool-btn snap-road-btn" disabled={!route || loading || snapLoading || Boolean(snapPreview)} onClick={() => void snapToRoad()}>
               {snapLoading ? <LoaderCircle className="spin" size={14} /> : <RouteIcon size={14} />}
               {snapLoading ? "Mencari jaringan jalan…" : "Ikuti jalan"}
             </button>
+            {activeTool === "draw" && (
+              <p className="tool-hint">Klik titik arah, lalu klik dua kali untuk selesai. Rute otomatis dicocokkan ke jaringan jalan.</p>
+            )}
             {activeTool === "edit" && (
-              <p className="tool-hint">Tarik titik solid untuk mengubah bentuk. Tarik titik transparan di tengah segmen untuk menambah titik.</p>
+              <p className="tool-hint">Tarik titik untuk mengubah bentuk. Setelah dilepas, rute otomatis dicocokkan kembali ke jalan.</p>
             )}
             {activeTool === "pan" && route && (
-              <p className="tool-hint">Tarik garis untuk memindahkan rute, lalu pilih Ikuti jalan jika perlu merapikannya ke OSM.</p>
+              <p className="tool-hint">Tarik garis untuk memindahkan rute. Setelah dilepas, rute otomatis dicocokkan kembali ke jalan.</p>
             )}
           </div>
         </div>
@@ -647,7 +688,7 @@ export default function Workspace() {
       >
         <TransitMap
           route={route}
-          onRouteChange={changeRoute}
+          onRouteChange={handleMapRouteChange}
           context={context}
           onContext={setContext}
           onNotice={setMapNotice}
@@ -715,7 +756,7 @@ export default function Workspace() {
       <aside className="result-panel">
         {!analysis && !loading && routeState !== "analyzing" && (
           <div className="empty-result">
-            <div className="empty-icon"><RouteIcon size={27} /></div>
+            <div className="empty-icon"><Image src="/brand/transight-icon.png" alt="" width={251} height={250} /></div>
             <p className="panel-kicker">HASIL EVALUASI</p>
             <h2>Belum ada rute yang dinilai.</h2>
             <p>Gambar sebuah garis di peta, lalu pilih <b>Evaluasi rute</b> untuk melihat skor dan alternatif.</p>
@@ -731,13 +772,13 @@ export default function Workspace() {
           <div className="result-loading">
             <LoaderCircle className="spin" size={28} />
             <h2>Menganalisis konteks rute…</h2>
-            <div style={{ textAlign: "left", maxWidth: "260px", marginTop: "12px", display: "grid", gap: "6px" }}>
+            <div className="loading-steps">
               {["Memvalidasi geometri rute", "Membentuk buffer 500 m", "Menghitung cakupan populasi", "Mendeteksi overlap existing", "Menguji 16 alternatif alignment", "Menyusun hasil evaluasi"].map((step, i) => {
                 const done = i < progressStep;
                 const active = i === progressStep;
                 return (
-                  <div key={step} style={{ display: "flex", alignItems: "center", gap: "8px", color: done ? "var(--teal)" : active ? "var(--ink)" : "var(--muted)", fontSize: "9px", transition: "color .2s" }}>
-                    <span style={{ width: "14px", height: "14px", display: "grid", placeItems: "center", background: done ? "var(--teal-pale)" : active ? "var(--teal)" : "transparent", borderRadius: "50%", fontSize: "8px", fontWeight: 800, color: done ? "var(--teal)" : active ? "#fff" : "var(--muted)", transition: "background .2s" }}>
+                  <div key={step} className={`loading-step${done ? " done" : active ? " active" : ""}`}>
+                    <span>
                       {done ? <Check size={10} /> : i + 1}
                     </span>
                     {step}
@@ -761,7 +802,7 @@ export default function Workspace() {
               <div>
                 <p className="panel-kicker">SKOR AKSESIBILITAS</p>
                 <h2>Hasil evaluasi</h2>
-                <p style={{ margin: "2px 0 0", color: "var(--muted)", fontSize: "9px" }}>Perhitungan spasial PostGIS</p>
+                <p className="result-method">Perhitungan spasial PostGIS</p>
                 {readiness !== "verified" && (
                   <p className={`result-readiness ${readiness}`}>Data {sourceStatusLabel[readiness].toLowerCase()} · belum untuk keputusan publik</p>
                 )}
@@ -825,9 +866,9 @@ export default function Workspace() {
                   <thead>
                     <tr>
                       <th>Metrik</th>
-                      <th style={{ textAlign: "right" }}>Baseline</th>
-                      <th style={{ textAlign: "right" }}>Rekomendasi</th>
-                      <th style={{ textAlign: "right" }}>Delta</th>
+                      <th>Baseline</th>
+                      <th>Rekomendasi</th>
+                      <th>Delta</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -857,7 +898,7 @@ export default function Workspace() {
             )}
 
             <section className="ai-card">
-              <div className="ai-title"><span><Sparkles size={16} /></span><div><strong>AI Planning Insight</strong><small>berdasarkan hasil PostGIS</small></div></div>
+              <div className="ai-title"><span><Sparkles size={16} /></span><div><strong>Insight Perencanaan</strong><small>berdasarkan hasil PostGIS</small></div></div>
               {insightLoading && <p className="ai-loading"><LoaderCircle className="spin" size={16} /> Menyusun insight terverifikasi…</p>}
               {insight ? (
                 <div className="ai-content">
@@ -889,7 +930,11 @@ export default function Workspace() {
                   <span>Skor <b>+{analysis.recommendation.score_delta}</b></span>
                   <span>Populasi/km <b>+{analysis.recommendation.population_per_km_delta.toLocaleString("id-ID")}</b></span>
                 </div>
-                <button className="apply-button" onClick={applyRecommendation}><Check size={17} /> Terapkan Rekomendasi</button>
+                <p className="recommendation-note">Estimasi awal; hasil dihitung ulang setelah rute disesuaikan ke jaringan jalan.</p>
+                <button className="apply-button" disabled={snapLoading || Boolean(snapPreview)} onClick={applyRecommendation}>
+                  {snapLoading ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}
+                  {snapLoading ? "Menyesuaikan ke jalan…" : "Terapkan Rekomendasi"}
+                </button>
               </section>
             ) : (
               <section className="no-recommendation"><Check size={17} /><span><b>Alignment saat ini paling kuat</b>Tidak ada pergeseran teruji yang meningkatkan skor.</span></section>
@@ -909,7 +954,7 @@ export default function Workspace() {
             ? `Basemap siap · ${sourceStatusLabel[readiness]}`
             : "Basemap Kulon Progo siap · data analisis belum terhubung"}
         </span>
-        <span style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+        <span className="workspace-status-details">
           {activeTool !== "pan" && (
             <span className="tool-indicator">{toolLabels[activeTool]}</span>
           )}

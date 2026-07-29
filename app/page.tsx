@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Lenis from "lenis";
@@ -133,7 +134,16 @@ export default function LandingPage() {
 
       <section className="relative z-10 flex min-h-[92vh] items-center overflow-hidden px-6 pb-20 pt-8">
         <nav className="absolute left-1/2 top-6 z-20 flex w-[min(940px,calc(100vw-48px))] -translate-x-1/2 items-center justify-between rounded-full border border-border bg-white/90 px-5 py-3 shadow-hairline">
-          <Link href="/" className="font-heading text-base font-bold">transight</Link>
+          <Link href="/" className="flex items-center" aria-label="Transight">
+            <Image
+              src="/brand/transight-wordmark.png"
+              alt="Transight"
+              width={626}
+              height={182}
+              className="h-6 w-auto"
+              priority
+            />
+          </Link>
           <div className="hidden items-center gap-6 text-sm font-medium text-slate-600 md:flex">
             <a href="#how">Cara kerja</a>
             <a href="#demo">Demo</a>
@@ -335,7 +345,13 @@ export default function LandingPage() {
 
       <footer className="relative z-10 border-t border-border bg-white px-6 py-8">
         <div className="section-shell flex flex-col justify-between gap-3 text-sm text-slate-500 md:flex-row">
-          <p className="font-semibold text-text">Evaluator Aksesibilitas Transit</p>
+          <Image
+            src="/brand/transight-wordmark.png"
+            alt="Transight"
+            width={626}
+            height={182}
+            className="h-7 w-auto"
+          />
           <p>Kabupaten Kulon Progo · Batas OSM, layer analisis provisional.</p>
         </div>
       </footer>
