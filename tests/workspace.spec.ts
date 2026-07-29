@@ -187,7 +187,7 @@ test("selects, inspects, and focuses display-safe map features", async ({ page }
   const requestsBeforeSelection = contextRequests.length;
   await facility.dispatchEvent("click");
   await expect(map.locator(".map-feature-public-facility.map-feature-selected")).toHaveCount(1);
-  await expect(map.locator(".leaflet-tooltip", { hasText: "Sekolah Wates · sekolah" })).toBeVisible();
+  await expect(map.locator(".map-feature-selected-tooltip", { hasText: "Sekolah Wates · sekolah" })).toBeVisible();
   await expect(page.locator(".feature-inspector")).toContainText("Sekolah Wates");
   await expect(facility).toHaveAttribute("data-layer-instance", "stable");
   await page.waitForTimeout(500);
