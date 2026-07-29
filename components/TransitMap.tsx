@@ -18,6 +18,9 @@ import type {
 import { normalizeMapGeoJSON } from "@/lib/types";
 import { useStore } from "@/lib/workspace-store";
 
+// leaflet-draw 1.0.4 still calls Leaflet's deprecated compatibility alias.
+(L.Polyline as typeof L.Polyline & { _flat: typeof L.LineUtil.isFlat })._flat = L.LineUtil.isFlat;
+
 type LayerVisibility = {
   routes: boolean;
   population: boolean;
@@ -528,6 +531,7 @@ function SelectedFeatureLayer({ context, selectedFeature, layers }: Pick<Props, 
         fillOpacity: 1,
       })}
       onEachFeature={(_, layer) => layer.bindTooltip(featureTooltip(selectedFeature.kind, feature), {
+        className: "map-feature-selected-tooltip",
         permanent: true,
         direction: "top",
       })}
