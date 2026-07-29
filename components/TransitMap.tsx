@@ -11,6 +11,7 @@ import type {
   LineString,
   MapContext,
   MapFeatureKind,
+  RouteChangeSource,
   SelectedFeature,
   SnapPreview,
 } from "@/lib/types";
@@ -30,7 +31,7 @@ type DatasetFitRequest = { id: string; nonce: number };
 
 type Props = {
   route: LineString | null;
-  onRouteChange: (route: LineString | null) => void;
+  onRouteChange: (route: LineString | null, source?: RouteChangeSource) => void;
   context: MapContext | null;
   onContext: (context: MapContext) => void;
   onNotice: (notice: string) => void;
@@ -123,10 +124,11 @@ function DrawingControl({ route, onRouteChange, snapPreview }: Pick<Props, "rout
   const setRouteState = useStore((s) => s.setRouteState);
 
   const bindRouteLayer = useCallback((layer: L.Polyline) => {
-    const emitRoute = () => {
+    const emitRoute = (source: RouteChangeSource) => {
       const geometry = layer.toGeoJSON().geometry;
-      if (geometry.type === "LineString") onRouteChange(geometry as LineString);
+      if (geometry.type === "LineString") onRouteChange(geometry as LineString, source);
     };
+    const emitEditedRoute = () => emitRoute("edit");
     const element = layer.getElement() as SVGPathElement | null;
     const beginDrag = (event: PointerEvent) => {
       const state = useStore.getState();
@@ -166,7 +168,7 @@ function DrawingControl({ route, onRouteChange, snapPreview }: Pick<Props, "rout
         if (mapWasDraggable) map.dragging.enable();
         element?.classList.remove("route-dragging");
         dragCleanup.current = null;
-        if (commit && moved) emitRoute();
+        if (commit && moved) emitRoute("drag");
         if (!commit && moved) layer.setLatLngs(original);
       };
       const finishDrag = (finishEvent: PointerEvent) => {
@@ -195,9 +197,12 @@ function DrawingControl({ route, onRouteChange, snapPreview }: Pick<Props, "rout
       dragCleanup.current = () => finish(false);
     };
 
-    layer.on("edit", emitRoute);
+    layer.on("edit", emitEditedRoute);
     element?.addEventListener("pointerdown", beginDrag);
-    layer.once("remove", () => element?.removeEventListener("pointerdown", beginDrag));
+    layer.once("remove", () => {
+      layer.off("edit", emitEditedRoute);
+      element?.removeEventListener("pointerdown", beginDrag);
+    });
     const state = useStore.getState();
     element?.classList.toggle("route-draggable", state.activeTool === "pan" && !state.snapPreview);
   }, [map, onRouteChange]);
@@ -216,7 +221,7 @@ function DrawingControl({ route, onRouteChange, snapPreview }: Pick<Props, "rout
       featureGroup.addLayer(layer);
       bindRouteLayer(layer);
       const geometry = layer.toGeoJSON().geometry;
-      if (geometry.type === "LineString") onRouteChange(geometry as LineString);
+      if (geometry.type === "LineString") onRouteChange(geometry as LineString, "draw");
       setActiveTool("pan");
     };
     map.on(L.Draw.Event.CREATED, created);

@@ -1,11 +1,15 @@
 import hmac
 import json
+import logging
 import os
 import re
 
 from fastapi import FastAPI, Header, HTTPException
 from openai import OpenAI
 from pydantic import BaseModel, Field
+
+
+logger = logging.getLogger(__name__)
 
 
 class RecommendationInput(BaseModel):
@@ -93,7 +97,11 @@ def has_only_verified_numbers(draft: NarrativeDraft, data: VerifiedAnalysis) -> 
 
 
 def generate(data: VerifiedAnalysis) -> NarrativeDraft:
-    response = OpenAI(api_key=os.environ["OPENAI_API_KEY"]).responses.parse(
+    response = OpenAI(
+        api_key=os.environ["OPENAI_API_KEY"],
+        timeout=12.0,
+        max_retries=1,
+    ).responses.parse(
         model=os.getenv("OPENAI_MODEL", "gpt-5.6-luna"),
         instructions=(
             "Anda membantu perencana kota membaca hasil evaluasi rute transit. "
@@ -133,4 +141,5 @@ def insight(
             raise ValueError("Narrative contains an unsupported number")
         return Narrative(**draft.model_dump(), source="ai")
     except Exception:
+        logger.exception("AI narrative generation failed; using deterministic fallback")
         return fallback(data)

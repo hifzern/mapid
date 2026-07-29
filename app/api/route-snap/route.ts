@@ -39,10 +39,14 @@ export async function POST(request: Request) {
     .map(([longitude, latitude]) => `${longitude},${latitude}`)
     .join(";");
   const baseUrl = (process.env.OSRM_BASE_URL || "https://router.project-osrm.org").replace(/\/+$/, "");
+  const profile = (process.env.OSRM_PROFILE || "driving").trim();
+  if (!/^[a-z0-9_-]+$/i.test(profile)) {
+    return NextResponse.json({ error: "Profil routing tidak valid." }, { status: 500 });
+  }
 
   try {
     const response = await fetch(
-      `${baseUrl}/route/v1/driving/${coordinates}?overview=simplified&geometries=geojson&steps=false`,
+      `${baseUrl}/route/v1/${profile}/${coordinates}?alternatives=false&overview=simplified&geometries=geojson&steps=false`,
       { cache: "no-store", signal: AbortSignal.timeout(8_000) },
     );
     const result = await response.json().catch(() => null) as {

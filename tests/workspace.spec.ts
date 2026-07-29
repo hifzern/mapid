@@ -72,8 +72,23 @@ const analysis = {
   },
 };
 
+const snapResult = {
+  route: { type: "LineString", coordinates: [[110.071, -7.869], [110.12, -7.84], [110.18, -7.82], [110.229, -7.879]] },
+  distance_meters: 18_200,
+  duration_seconds: 1_420,
+  provider: "osrm",
+  endpoints: {
+    start: { input: [110.07, -7.87], snapped: [110.071, -7.869], distance_meters: 220 },
+    end: { input: [110.23, -7.88], snapped: [110.229, -7.879], distance_meters: 90 },
+  },
+};
+
 async function mockContext(page: Page, fixture = context) {
   await page.route("https://tile.openstreetmap.org/**", (route) => route.fulfill({ status: 204 }));
+  await page.route("**/api/route-snap", (route) => route.fulfill({
+    status: 503,
+    json: { error: "Routing jalan sedang tidak tersedia." },
+  }));
   await page.route("**/api/map-context?**", (route) => {
     const bbox = new URL(route.request().url()).searchParams.get("bbox")?.split(",").map(Number);
     expect(bbox).toHaveLength(4);
@@ -101,6 +116,7 @@ async function routeScreenPoint(route: Locator) {
 test("draws a route and renders verified results", async ({ page }) => {
   await mockContext(page);
   let analysisCalls = 0;
+  let snapCalls = 0;
   await page.route("**/api/analyze", (route) => {
     analysisCalls += 1;
     return route.fulfill({ json: analysis });
@@ -110,6 +126,10 @@ test("draws a route and renders verified results", async ({ page }) => {
     actions: ["Tinjau pergeseran 500 meter ke utara."],
     source: "ai",
   } }));
+  await page.route("**/api/route-snap", (route) => {
+    snapCalls += 1;
+    return route.fulfill({ json: snapResult });
+  });
 
   await page.goto("/workspace");
   await expect(page.getByText("Kabupaten Kulon Progo").first()).toBeVisible();
@@ -120,6 +140,9 @@ test("draws a route and renders verified results", async ({ page }) => {
   const map = page.locator(".leaflet-map");
   await map.click({ position: { x: 240, y: 260 } });
   await map.dblclick({ position: { x: 430, y: 190 } });
+  const roadPreview = page.getByRole("region", { name: "Preview ikuti jalan" });
+  await expect(roadPreview).toBeVisible();
+  await roadPreview.getByRole("button", { name: "Terapkan" }).click();
   await expect(evaluate).toBeEnabled();
   await evaluate.click();
 
@@ -134,6 +157,7 @@ test("draws a route and renders verified results", async ({ page }) => {
 
   await page.getByRole("button", { name: /Terapkan Rekomendasi/ }).click();
   await expect.poll(() => analysisCalls).toBe(2);
+  await expect.poll(() => snapCalls).toBe(2);
   await expect(page.locator(".score-ring-ws strong")).toHaveText("86");
 });
 
@@ -176,7 +200,7 @@ test("keeps scenarios, export, and map controls functional", async ({ page }) =>
 
   await expect(page.getByRole("button", { name: "Rute Simulasi A" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Sesi lokal")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Metodologi" })).toHaveAttribute("href", "/#metodologi");
+  await expect(page.getByRole("link", { name: "Metodologi" })).toHaveAttribute("href", "/#method");
 
   await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
   await expect(page.getByRole("button", { name: "Ekspor" })).toBeEnabled();
@@ -306,16 +330,7 @@ test("previews a snapped route before apply and keeps it as one undo step", asyn
   await page.route("**/api/route-snap", (route) => {
     snapCalls += 1;
     if (snapCalls > 2) return route.fulfill({ status: 503, json: { error: "Routing jalan sedang tidak tersedia." } });
-    return route.fulfill({ json: {
-      route: { type: "LineString", coordinates: [[110.071, -7.869], [110.12, -7.84], [110.18, -7.82], [110.229, -7.879]] },
-      distance_meters: 18_200,
-      duration_seconds: 1_420,
-      provider: "osrm",
-      endpoints: {
-        start: { input: [110.07, -7.87], snapped: [110.071, -7.869], distance_meters: 220 },
-        end: { input: [110.23, -7.88], snapped: [110.229, -7.879], distance_meters: 90 },
-      },
-    } });
+    return route.fulfill({ json: snapResult });
   });
 
   await page.goto("/workspace");
@@ -415,7 +430,7 @@ test("edits vertices and inserts a midpoint without enabling whole-route drag", 
 
   await page.getByRole("button", { name: /Edit/ }).click();
   await expect(page.locator("path.proposed-route.route-draggable")).toHaveCount(0);
-  await expect(page.getByText(/titik transparan di tengah segmen/)).toBeVisible();
+  await expect(page.getByText(/otomatis dicocokkan kembali ke jalan/)).toBeVisible();
 
   const handles = page.locator(".leaflet-editing-icon");
   await expect(handles).toHaveCount(11);
