@@ -27,6 +27,8 @@ type LayerVisibility = {
   property: boolean;
   facilities: boolean;
   buffer: boolean;
+  stops: boolean;
+  overlap: boolean;
 };
 
 type FocusRequest = SelectedFeature & { nonce: number };
@@ -76,9 +78,17 @@ function localBoundaryContext(studyArea: MapContext["study_area"]): MapContext {
     sources: [localBoundarySource],
     methodology: {
       buffer_meters: 500,
+      walking_minutes: 10,
+      stop_spacing_meters: 800,
+      max_analysis_stops: 30,
       overlap_tolerance_meters: 100,
-      population_weight: 0.625,
-      overlap_weight: 0.375,
+      overlap_conflict_threshold_pct: 30,
+      facility_count_target: 10,
+      area_population_coverage_target_pct: 50,
+      area_facility_count_target: 3,
+      population_weight: 0.5,
+      facility_weight: 0.25,
+      overlap_weight: 0.25,
       population_assumption: "uniform_within_polygon",
       target_calibration_status: "provisional",
     },
@@ -639,8 +649,29 @@ function TransitMap(props: Props) {
       {props.analysis && props.layers.buffer && (
         <GeoJSON
           key={`buffer-${props.analysis.baseline.score}`}
-          data={props.analysis.baseline.buffer_geojson as never}
+          data={(props.analysis.baseline.catchment_geojson || props.analysis.baseline.buffer_geojson) as never}
           style={{ color: "#14b8a6", weight: 1.5, fillColor: "#14b8a6", fillOpacity: 0.14 }}
+        />
+      )}
+      {props.analysis?.baseline.stops_geojson && props.layers.stops && (
+        <GeoJSON
+          key={`stops-${props.analysis.baseline.stop_count}`}
+          data={props.analysis.baseline.stops_geojson as never}
+          pointToLayer={(_, latlng) => L.circleMarker(latlng, {
+            className: "map-feature map-feature-analysis-stop",
+            radius: 5,
+            color: "#ffffff",
+            weight: 2,
+            fillColor: "#0f766e",
+            fillOpacity: 1,
+          })}
+        />
+      )}
+      {props.analysis?.baseline.overlap_geojson && props.layers.overlap && (
+        <GeoJSON
+          key={`overlap-${props.analysis.baseline.overlap_pct}`}
+          data={props.analysis.baseline.overlap_geojson as never}
+          style={{ className: "map-feature map-feature-overlap", color: "#dc2626", weight: 8, opacity: 0.85 }}
         />
       )}
       {props.analysis?.recommendation && (

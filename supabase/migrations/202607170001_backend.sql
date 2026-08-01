@@ -62,14 +62,28 @@ create table public.public_facilities (
 create table public.scoring_config (
   id boolean primary key default true check (id),
   buffer_meters integer not null default 500 check (buffer_meters between 1 and 5000),
+  walking_minutes integer not null default 10 check (walking_minutes between 1 and 60),
+  stop_spacing_meters integer not null default 800 check (stop_spacing_meters between 250 and 5000),
+  max_analysis_stops integer not null default 30 check (max_analysis_stops between 2 and 30),
   overlap_tolerance_meters integer not null default 100
     check (overlap_tolerance_meters between 1 and 1000),
+  overlap_conflict_threshold_pct integer not null default 30
+    check (overlap_conflict_threshold_pct between 1 and 100),
   population_per_km_target numeric(14, 2) check (population_per_km_target > 0),
-  population_weight numeric(4, 3) not null default 0.625
+  facility_count_target integer not null default 10 check (facility_count_target between 1 and 10000),
+  area_population_coverage_target_pct numeric(5, 2) not null default 50
+    check (area_population_coverage_target_pct > 0 and area_population_coverage_target_pct <= 100),
+  area_facility_count_target integer not null default 3
+    check (area_facility_count_target between 1 and 1000),
+  population_weight numeric(4, 3) not null default 0.500
     check (population_weight between 0 and 1),
-  overlap_weight numeric(4, 3) not null default 0.375
+  facility_weight numeric(4, 3) not null default 0.250
+    check (facility_weight between 0 and 1),
+  overlap_weight numeric(4, 3) not null default 0.250
     check (overlap_weight between 0 and 1),
-  constraint scoring_weights_total_one check (population_weight + overlap_weight = 1)
+  constraint scoring_weights_total_one check (
+    population_weight + facility_weight + overlap_weight = 1
+  )
 );
 
 insert into public.scoring_config (id) values (true);
@@ -142,7 +156,227 @@ begin
 end;
 $$;
 
-create function private.score_route(p_route extensions.geometry)
+create function private.route_stops(
+  p_route extensions.geometry,
+  p_spacing_meters integer,
+  p_max_stops integer
+)
+returns extensions.geometry
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  v_utm_zone integer;
+  v_metric_srid integer;
+  v_metric_route extensions.geometry;
+  v_route_length_m double precision;
+  v_stop_count integer;
+  v_stops extensions.geometry;
+begin
+  v_utm_zone := greatest(1, least(
+    60,
+    floor((extensions.st_x(extensions.st_centroid(p_route)) + 180) / 6)::integer + 1
+  ));
+  v_metric_srid := case
+    when extensions.st_y(extensions.st_centroid(p_route)) >= 0
+      then 32600 + v_utm_zone
+    else 32700 + v_utm_zone
+  end;
+  v_metric_route := extensions.st_transform(p_route, v_metric_srid);
+  v_route_length_m := extensions.st_length(v_metric_route);
+  v_stop_count := least(
+    p_max_stops,
+    greatest(2, ceil(v_route_length_m / p_spacing_meters)::integer + 1)
+  );
+
+  select extensions.st_multi(extensions.st_collectionextract(extensions.st_collect(
+    extensions.st_transform(
+      extensions.st_lineinterpolatepoint(
+        v_metric_route,
+        index::double precision / nullif(v_stop_count - 1, 0)
+      ),
+      4326
+    )
+  ), 1))
+  into v_stops
+  from generate_series(0, v_stop_count - 1) as index;
+
+  return v_stops;
+end;
+$$;
+
+create function private.stops_from_geojson(
+  p_stops jsonb,
+  p_route extensions.geometry,
+  p_config public.scoring_config
+)
+returns extensions.geometry
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  v_stops extensions.geometry;
+  v_input_count integer;
+  v_parsed_count integer;
+begin
+  if p_stops is null or p_stops = 'null'::jsonb then
+    return private.route_stops(
+      p_route,
+      p_config.stop_spacing_meters,
+      p_config.max_analysis_stops
+    );
+  end if;
+  if jsonb_typeof(p_stops) <> 'object'
+    or p_stops ->> 'type' <> 'FeatureCollection'
+    or jsonb_typeof(p_stops -> 'features') <> 'array'
+  then
+    raise exception 'stops must be a GeoJSON FeatureCollection' using errcode = '22023';
+  end if;
+
+  v_input_count := jsonb_array_length(p_stops -> 'features');
+  if v_input_count < 2 or v_input_count > p_config.max_analysis_stops then
+    raise exception 'stop count is outside configured limits' using errcode = '22023';
+  end if;
+
+  select
+    extensions.st_multi(extensions.st_collectionextract(extensions.st_collect(
+      extensions.st_setsrid(
+        extensions.st_geomfromgeojson((feature -> 'geometry')::text),
+        4326
+      )
+    ), 1)),
+    count(*)
+  into v_stops, v_parsed_count
+  from jsonb_array_elements(p_stops -> 'features') as feature
+  where feature ->> 'type' = 'Feature'
+    and feature #>> '{geometry,type}' = 'Point';
+
+  if v_parsed_count <> v_input_count
+    or v_stops is null
+    or extensions.st_isempty(v_stops)
+  then
+    raise exception 'stops must contain Point features only' using errcode = '22023';
+  end if;
+  if exists (
+    select 1
+    from extensions.st_dump(v_stops) as stop
+    where not extensions.st_dwithin(
+      stop.geom::extensions.geography,
+      p_route::extensions.geography,
+      100
+    )
+  ) then
+    raise exception 'stops must remain near the evaluated route' using errcode = '22023';
+  end if;
+
+  return v_stops;
+exception when others then
+  if sqlstate = '22023' then raise; end if;
+  raise exception 'stops contain invalid GeoJSON coordinates' using errcode = '22023';
+end;
+$$;
+
+create function private.service_area_from_geojson(
+  p_service_areas jsonb,
+  p_stops extensions.geometry,
+  p_study_area extensions.geometry
+)
+returns extensions.geometry
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  v_service_area extensions.geometry;
+  v_input_count integer;
+  v_parsed_count integer;
+begin
+  if p_service_areas is null or p_service_areas = 'null'::jsonb then
+    return null;
+  end if;
+  if jsonb_typeof(p_service_areas) <> 'object'
+    or p_service_areas ->> 'type' <> 'FeatureCollection'
+    or jsonb_typeof(p_service_areas -> 'features') <> 'array'
+  then
+    raise exception 'service areas must be a GeoJSON FeatureCollection' using errcode = '22023';
+  end if;
+
+  v_input_count := jsonb_array_length(p_service_areas -> 'features');
+  if v_input_count < 1 or v_input_count > 100 then
+    raise exception 'service area count is outside allowed limits' using errcode = '22023';
+  end if;
+
+  select
+    extensions.st_unaryunion(extensions.st_collect(
+      extensions.st_collectionextract(extensions.st_makevalid(
+        extensions.st_setsrid(
+          extensions.st_geomfromgeojson((feature -> 'geometry')::text),
+          4326
+        )
+      ), 3)
+    )),
+    count(*)
+  into v_service_area, v_parsed_count
+  from jsonb_array_elements(p_service_areas -> 'features') as feature
+  where feature ->> 'type' = 'Feature'
+    and feature #>> '{geometry,type}' in ('Polygon', 'MultiPolygon');
+
+  if v_parsed_count <> v_input_count
+    or v_service_area is null
+    or extensions.st_isempty(v_service_area)
+  then
+    raise exception 'service areas must contain Polygon features only' using errcode = '22023';
+  end if;
+  if not extensions.st_dwithin(
+    v_service_area::extensions.geography,
+    p_stops::extensions.geography,
+    5000
+  ) then
+    raise exception 'service areas must remain near the derived stops' using errcode = '22023';
+  end if;
+  if not extensions.st_coveredby(
+    v_service_area,
+    extensions.st_buffer(p_stops::extensions.geography, 2500)::extensions.geometry
+  ) then
+    raise exception 'service areas exceed the allowed walking catchment envelope'
+      using errcode = '22023';
+  end if;
+
+  return extensions.st_intersection(v_service_area, p_study_area);
+exception when others then
+  if sqlstate = '22023' then raise; end if;
+  raise exception 'service areas contain invalid GeoJSON coordinates' using errcode = '22023';
+end;
+$$;
+
+create function private.stop_buffer_catchment(
+  p_stops extensions.geometry,
+  p_buffer_meters integer,
+  p_study_area extensions.geometry
+)
+returns extensions.geometry
+language sql
+immutable
+set search_path = ''
+as $$
+  select extensions.st_intersection(
+    extensions.st_unaryunion(extensions.st_collect(
+      extensions.st_buffer(stop.geom::extensions.geography, p_buffer_meters)::extensions.geometry
+    )),
+    p_study_area
+  )
+  from extensions.st_dump(p_stops) as stop;
+$$;
+
+create function private.score_route(
+  p_route extensions.geometry,
+  p_service_area extensions.geometry,
+  p_stops extensions.geometry,
+  p_catchment_method text,
+  p_catchment_provider text
+)
 returns jsonb
 language plpgsql
 stable
@@ -152,7 +386,7 @@ as $$
 declare
   v_config public.scoring_config%rowtype;
   v_study_area extensions.geometry;
-  v_buffer extensions.geometry;
+  v_service_area extensions.geometry := p_service_area;
   v_existing_corridor extensions.geometry;
   v_route_length_m double precision;
   v_route_length_km double precision;
@@ -160,10 +394,15 @@ declare
   v_population_covered double precision := 0;
   v_population_per_km double precision;
   v_population_score double precision;
+  v_facility_score double precision;
   v_overlap_pct double precision := 0;
   v_overlap_score double precision;
   v_composite_score double precision;
   v_property_count integer := 0;
+  v_facility_count integer := 0;
+  v_overlap_geometry extensions.geometry;
+  v_facilities_by_type jsonb := '[]'::jsonb;
+  v_area_scores jsonb := '[]'::jsonb;
 begin
   select * into v_config from public.scoring_config where id = true;
   select geom into v_study_area from public.study_area where id = true;
@@ -175,37 +414,52 @@ begin
     raise exception 'set scoring_config.population_per_km_target after validating study data'
       using errcode = '55000';
   end if;
+  if v_service_area is null or extensions.st_isempty(v_service_area) then
+    raise exception 'a non-empty catchment is required for route scoring' using errcode = '22023';
+  end if;
 
   v_route_length_m := extensions.st_length(p_route::extensions.geography);
   v_route_length_km := v_route_length_m / 1000.0;
-  v_buffer := extensions.st_intersection(
-    extensions.st_buffer(
-      p_route::extensions.geography,
-      v_config.buffer_meters
-    )::extensions.geometry,
-    v_study_area
-  );
 
-  -- ponytail: uniform population inside each polygon; replace the input with a
-  -- finer validated grid if this approximation proves too coarse.
+  -- Population is assumed uniform inside each source polygon; production data
+  -- should use the finest validated grid available.
   select coalesce(sum(
     pg.population::double precision * least(
       1.0,
       extensions.st_area(
-        extensions.st_intersection(pg.geom, v_buffer)::extensions.geography
+        extensions.st_intersection(pg.geom, v_service_area)::extensions.geography
       ) / nullif(extensions.st_area(pg.geom::extensions.geography), 0)
     )
   ), 0)
   into v_population_covered
   from public.population_grid pg
-  where pg.geom operator(extensions.&&) v_buffer
-    and extensions.st_intersects(pg.geom, v_buffer);
+  where pg.geom operator(extensions.&&) v_service_area
+    and extensions.st_intersects(pg.geom, v_service_area);
 
   select count(*)::integer
   into v_property_count
   from public.property_go pg
-  where pg.geom operator(extensions.&&) v_buffer
-    and extensions.st_intersects(pg.geom, v_buffer);
+  where pg.geom operator(extensions.&&) v_service_area
+    and extensions.st_intersects(pg.geom, v_service_area);
+
+  select count(*)::integer
+  into v_facility_count
+  from public.public_facilities pf
+  where pf.geom operator(extensions.&&) v_service_area
+    and extensions.st_intersects(pf.geom, v_service_area);
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'kategori', facility.kategori,
+    'count', facility.facility_count
+  ) order by facility.kategori), '[]'::jsonb)
+  into v_facilities_by_type
+  from (
+    select pf.kategori, count(*)::integer as facility_count
+    from public.public_facilities pf
+    where pf.geom operator(extensions.&&) v_service_area
+      and extensions.st_intersects(pf.geom, v_service_area)
+    group by pf.kategori
+  ) facility;
 
   select extensions.st_unaryunion(extensions.st_collect(
     extensions.st_buffer(
@@ -222,6 +476,10 @@ begin
   );
 
   if v_existing_corridor is not null then
+    v_overlap_geometry := extensions.st_multi(extensions.st_collectionextract(
+      extensions.st_intersection(p_route, v_existing_corridor),
+      2
+    ));
     v_overlap_length := coalesce(extensions.st_length(
       extensions.st_intersection(
         p_route::extensions.geography,
@@ -235,11 +493,91 @@ begin
     100.0,
     100.0 * v_population_per_km / v_config.population_per_km_target::double precision
   );
+  v_facility_score := least(
+    100.0,
+    100.0 * v_facility_count / v_config.facility_count_target::double precision
+  );
   v_overlap_pct := least(100.0, 100.0 * v_overlap_length / v_route_length_m);
   v_overlap_score := 100.0 - v_overlap_pct;
   v_composite_score :=
     v_population_score * v_config.population_weight::double precision
+    + v_facility_score * v_config.facility_weight::double precision
     + v_overlap_score * v_config.overlap_weight::double precision;
+
+  with admin_base as (
+    select
+      pg.admin_name,
+      sum(pg.population)::bigint as population_total,
+      extensions.st_unaryunion(extensions.st_collect(pg.geom)) as admin_geom,
+      sum(
+        pg.population::double precision * least(
+          1.0,
+          extensions.st_area(
+            extensions.st_intersection(pg.geom, v_service_area)::extensions.geography
+          ) / nullif(extensions.st_area(pg.geom::extensions.geography), 0)
+        )
+      ) as population_covered
+    from public.population_grid pg
+    group by pg.admin_name
+  ), admin_metrics as (
+    select
+      admin.admin_name,
+      admin.population_total,
+      round(admin.population_covered)::bigint as population_covered,
+      case
+        when admin.population_total > 0
+          then 100.0 * admin.population_covered / admin.population_total::double precision
+        else 0
+      end as coverage_pct,
+      (
+        select count(*)::integer
+        from public.public_facilities pf
+        where extensions.st_intersects(pf.geom, v_service_area)
+          and extensions.st_intersects(pf.geom, admin.admin_geom)
+      ) as facility_count,
+      case
+        when v_existing_corridor is null
+          or not extensions.st_intersects(p_route, admin.admin_geom)
+          then 0
+        else least(
+          100.0,
+          100.0 * extensions.st_length(
+            extensions.st_intersection(
+              extensions.st_intersection(p_route, admin.admin_geom),
+              v_existing_corridor
+            )::extensions.geography
+          ) / nullif(extensions.st_length(
+            extensions.st_intersection(p_route, admin.admin_geom)::extensions.geography
+          ), 0)
+        )
+      end as overlap_pct
+    from admin_base admin
+    where admin.population_covered > 0
+      or extensions.st_intersects(p_route, admin.admin_geom)
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'admin_name', metric.admin_name,
+    'score', round((
+      least(
+        100.0,
+        100.0 * metric.coverage_pct
+          / v_config.area_population_coverage_target_pct::double precision
+      ) * v_config.population_weight::double precision
+      + least(
+        100.0,
+        100.0 * metric.facility_count
+          / v_config.area_facility_count_target::double precision
+      ) * v_config.facility_weight::double precision
+      + (100.0 - metric.overlap_pct) * v_config.overlap_weight::double precision
+    )::numeric, 2),
+    'population_covered', metric.population_covered,
+    'population_total', metric.population_total,
+    'coverage_pct', round(metric.coverage_pct::numeric, 2),
+    'facility_count', metric.facility_count,
+    'overlap_pct', round(metric.overlap_pct::numeric, 2)
+  ) order by metric.coverage_pct desc), '[]'::jsonb)
+  into v_area_scores
+  from admin_metrics metric;
 
   return jsonb_build_object(
     'score', round(v_composite_score::numeric, 2),
@@ -248,22 +586,55 @@ begin
     'population_per_km', round(v_population_per_km::numeric, 2),
     'population_per_km_target', v_config.population_per_km_target,
     'population_score', round(v_population_score::numeric, 2),
+    'facility_count_target', v_config.facility_count_target,
+    'facility_score', round(v_facility_score::numeric, 2),
     'overlap_pct', round(v_overlap_pct::numeric, 2),
     'overlap_score', round(v_overlap_score::numeric, 2),
+    'overlap_conflict', v_overlap_pct > v_config.overlap_conflict_threshold_pct,
+    'overlap_geojson', case
+      when v_overlap_geometry is not null
+        and not extensions.st_isempty(v_overlap_geometry)
+      then extensions.st_asgeojson(v_overlap_geometry, 6)::jsonb
+      else null
+    end,
     'property_go_count', v_property_count,
-    'buffer_geojson', extensions.st_asgeojson(v_buffer, 6)::jsonb,
+    'facility_count', v_facility_count,
+    'facilities_by_type', v_facilities_by_type,
+    'population_by_area', v_area_scores,
+    'stop_count', extensions.st_npoints(p_stops),
+    'stops_geojson', extensions.st_asgeojson(p_stops, 6)::jsonb,
+    'catchment_geojson', extensions.st_asgeojson(v_service_area, 6)::jsonb,
+    'catchment_method', p_catchment_method,
+    'catchment_provider', p_catchment_provider,
+    'buffer_geojson', extensions.st_asgeojson(v_service_area, 6)::jsonb,
     'formula', jsonb_build_object(
       'buffer_meters', v_config.buffer_meters,
+      'walking_minutes', v_config.walking_minutes,
+      'stop_spacing_meters', v_config.stop_spacing_meters,
+      'max_analysis_stops', v_config.max_analysis_stops,
       'overlap_tolerance_meters', v_config.overlap_tolerance_meters,
+      'overlap_conflict_threshold_pct', v_config.overlap_conflict_threshold_pct,
+      'facility_count_target', v_config.facility_count_target,
+      'area_population_coverage_target_pct', v_config.area_population_coverage_target_pct,
+      'area_facility_count_target', v_config.area_facility_count_target,
       'population_weight', v_config.population_weight,
+      'facility_weight', v_config.facility_weight,
       'overlap_weight', v_config.overlap_weight,
-      'population_assumption', 'uniform_within_polygon'
+      'population_assumption', 'uniform_within_polygon',
+      'catchment_method', p_catchment_method,
+      'catchment_provider', p_catchment_provider
     )
   );
 end;
 $$;
 
-create function private.analyze_route(p_route jsonb)
+create function private.analyze_route(
+  p_route jsonb,
+  p_service_areas jsonb default null,
+  p_stops jsonb default null,
+  p_catchment_method text default 'stop_buffer',
+  p_catchment_provider text default 'postgis'
+)
 returns jsonb
 language plpgsql
 stable
@@ -272,9 +643,16 @@ set search_path = ''
 as $$
 declare
   v_route extensions.geometry := private.route_from_geojson(p_route);
+  v_config public.scoring_config%rowtype;
   v_study_area extensions.geometry;
+  v_stops extensions.geometry;
+  v_service_area extensions.geometry;
   v_metric_route extensions.geometry;
+  v_metric_stops extensions.geometry;
+  v_metric_service_area extensions.geometry;
   v_candidate extensions.geometry;
+  v_candidate_stops extensions.geometry;
+  v_candidate_service_area extensions.geometry;
   v_best_route extensions.geometry;
   v_baseline jsonb;
   v_candidate_result jsonb;
@@ -292,7 +670,11 @@ declare
   v_candidate_population_per_km numeric;
   v_population_delta bigint;
   v_population_per_km_delta numeric;
+  v_facility_delta integer;
+  v_effective_method text;
+  v_effective_provider text;
 begin
+  select * into v_config from public.scoring_config where id = true;
   select geom into v_study_area from public.study_area where id = true;
   if not found then
     raise exception 'configure one study_area before evaluating routes' using errcode = '55000';
@@ -302,7 +684,46 @@ begin
       using errcode = '22023';
   end if;
 
-  v_baseline := private.score_route(v_route);
+  if p_catchment_method not in ('network_isochrone', 'stop_buffer') then
+    raise exception 'catchment method is not supported' using errcode = '22023';
+  end if;
+  if p_catchment_provider is null
+    or length(p_catchment_provider) > 64
+    or p_catchment_provider !~ '^[a-z0-9_-]+$'
+  then
+    raise exception 'catchment provider is not valid' using errcode = '22023';
+  end if;
+
+  v_stops := private.stops_from_geojson(p_stops, v_route, v_config);
+  v_service_area := private.service_area_from_geojson(
+    p_service_areas,
+    v_stops,
+    v_study_area
+  );
+  if v_service_area is null or extensions.st_isempty(v_service_area) then
+    v_service_area := private.stop_buffer_catchment(
+      v_stops,
+      v_config.buffer_meters,
+      v_study_area
+    );
+    v_effective_method := 'stop_buffer';
+    v_effective_provider := 'postgis';
+  else
+    if p_catchment_method <> 'network_isochrone' then
+      raise exception 'provided service areas must be labelled network_isochrone'
+        using errcode = '22023';
+    end if;
+    v_effective_method := p_catchment_method;
+    v_effective_provider := p_catchment_provider;
+  end if;
+
+  v_baseline := private.score_route(
+    v_route,
+    v_service_area,
+    v_stops,
+    v_effective_method,
+    v_effective_provider
+  );
   v_baseline_score := (v_baseline ->> 'score')::numeric;
   v_best_score := v_baseline_score;
   v_best_population_per_km := (v_baseline ->> 'population_per_km')::numeric;
@@ -317,6 +738,8 @@ begin
     else 32700 + v_utm_zone
   end;
   v_metric_route := extensions.st_transform(v_route, v_metric_srid);
+  v_metric_stops := extensions.st_transform(v_stops, v_metric_srid);
+  v_metric_service_area := extensions.st_transform(v_service_area, v_metric_srid);
 
   -- ponytail: fixed 16-candidate search; add more candidates only after an
   -- evaluation demonstrates that the extra database work improves results.
@@ -344,10 +767,35 @@ begin
       ),
       4326
     );
+    v_candidate_stops := extensions.st_transform(
+      extensions.st_translate(
+        v_metric_stops,
+        case v_direction when 'east' then v_distance when 'west' then -v_distance else 0 end,
+        case v_direction when 'north' then v_distance when 'south' then -v_distance else 0 end
+      ),
+      4326
+    );
+    v_candidate_service_area := extensions.st_intersection(
+      extensions.st_transform(
+        extensions.st_translate(
+          v_metric_service_area,
+          case v_direction when 'east' then v_distance when 'west' then -v_distance else 0 end,
+          case v_direction when 'north' then v_distance when 'south' then -v_distance else 0 end
+        ),
+        4326
+      ),
+      v_study_area
+    );
 
     continue when not extensions.st_coveredby(v_candidate, v_study_area);
 
-    v_candidate_result := private.score_route(v_candidate);
+    v_candidate_result := private.score_route(
+      v_candidate,
+      v_candidate_service_area,
+      v_candidate_stops,
+      v_effective_method,
+      v_effective_provider
+    );
     v_candidate_score := (v_candidate_result ->> 'score')::numeric;
     v_candidate_population_per_km :=
       (v_candidate_result ->> 'population_per_km')::numeric;
@@ -384,6 +832,9 @@ begin
   v_population_per_km_delta :=
     (v_best_result ->> 'population_per_km')::numeric
     - (v_baseline ->> 'population_per_km')::numeric;
+  v_facility_delta :=
+    (v_best_result ->> 'facility_count')::integer
+    - (v_baseline ->> 'facility_count')::integer;
 
   return jsonb_build_object(
     'baseline', v_baseline,
@@ -394,6 +845,7 @@ begin
       'score_delta', round(v_best_score - v_baseline_score, 2),
       'population_delta', v_population_delta,
       'population_per_km_delta', round(v_population_per_km_delta, 2),
+      'facility_delta', v_facility_delta,
       'result', v_best_result
     )
   );
@@ -546,14 +998,26 @@ begin
 end;
 $$;
 
-create function public.analyze_route(p_route jsonb)
+create function public.analyze_route(
+  p_route jsonb,
+  p_service_areas jsonb default null,
+  p_stops jsonb default null,
+  p_catchment_method text default 'stop_buffer',
+  p_catchment_provider text default 'postgis'
+)
 returns jsonb
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select private.analyze_route(p_route);
+  select private.analyze_route(
+    p_route,
+    p_service_areas,
+    p_stops,
+    p_catchment_method,
+    p_catchment_provider
+  );
 $$;
 
 create function public.get_map_context(p_bbox jsonb)
@@ -567,13 +1031,14 @@ as $$
 $$;
 
 revoke all on all functions in schema private from public;
-revoke all on function public.analyze_route(jsonb) from public;
+revoke all on function public.analyze_route(jsonb, jsonb, jsonb, text, text) from public;
 revoke all on function public.get_map_context(jsonb) from public;
 
-grant execute on function public.analyze_route(jsonb) to anon, authenticated, service_role;
+grant execute on function public.analyze_route(jsonb, jsonb, jsonb, text, text)
+  to anon, authenticated, service_role;
 grant execute on function public.get_map_context(jsonb) to anon, authenticated, service_role;
 
-comment on function public.analyze_route(jsonb) is
-  'Scores a GeoJSON LineString and returns the best improving cardinal shift.';
+comment on function public.analyze_route(jsonb, jsonb, jsonb, text, text) is
+  'Scores a route using stop catchments, POI impact, overlap, per-area results, and improving alignments.';
 comment on function public.get_map_context(jsonb) is
   'Returns viewport-bounded display-safe GeoJSON without raw population or addresses.';

@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { BackendError, callRpc } from "@/lib/supabase";
 import type { MapContext } from "@/lib/types";
 
+export const runtime = "nodejs";
+export const maxDuration = 15;
+
 export async function GET(request: Request) {
   const bbox = new URL(request.url).searchParams.get("bbox")
     ?.split(",")

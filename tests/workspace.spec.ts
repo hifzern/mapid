@@ -36,9 +36,17 @@ const context = {
   }],
   methodology: {
     buffer_meters: 500,
+    walking_minutes: 10,
+    stop_spacing_meters: 800,
+    max_analysis_stops: 30,
     overlap_tolerance_meters: 100,
-    population_weight: 0.625,
-    overlap_weight: 0.375,
+    overlap_conflict_threshold_pct: 30,
+    facility_count_target: 25,
+    area_population_coverage_target_pct: 50,
+    area_facility_count_target: 3,
+    population_weight: 0.5,
+    facility_weight: 0.25,
+    overlap_weight: 0.25,
     population_assumption: "uniform_within_polygon",
     target_calibration_status: "provisional",
   },
@@ -54,9 +62,44 @@ const score = {
   population_score: 95.65,
   overlap_pct: 18,
   overlap_score: 82,
+  overlap_conflict: false,
+  overlap_geojson: { type: "LineString", coordinates: [[110.11, -7.86], [110.15, -7.84]] },
   property_go_count: 167,
+  facility_count: 23,
+  facility_count_target: 25,
+  facility_score: 92,
+  facilities_by_type: [
+    { kategori: "pasar", count: 3 },
+    { kategori: "sekolah", count: 5 },
+    { kategori: "rumah_sakit", count: 1 },
+  ],
+  population_by_area: [
+    { admin_name: "Kecamatan Wates", score: 80, population_covered: 40210, population_total: 50000, coverage_pct: 80.42, facility_count: 16, overlap_pct: 12 },
+    { admin_name: "Kecamatan Sentolo", score: 69, population_covered: 19570, population_total: 30000, coverage_pct: 65.23, facility_count: 7, overlap_pct: 24 },
+  ],
+  stop_count: 3,
+  stops_geojson: { type: "MultiPoint", coordinates: [[110.1, -7.84], [110.16, -7.82], [110.22, -7.8]] },
+  catchment_geojson: { type: "Polygon", coordinates: [[[110.1, -7.87], [110.22, -7.87], [110.22, -7.78], [110.1, -7.78], [110.1, -7.87]]] },
+  catchment_method: "network_isochrone",
+  catchment_provider: "openrouteservice",
   buffer_geojson: { type: "Polygon", coordinates: [[[110.1, -7.87], [110.22, -7.87], [110.22, -7.78], [110.1, -7.78], [110.1, -7.87]]] },
-  formula: { buffer_meters: 500, overlap_tolerance_meters: 100, population_weight: 0.625, overlap_weight: 0.375, population_assumption: "uniform_within_polygon" },
+  formula: {
+    buffer_meters: 500,
+    walking_minutes: 10,
+    stop_spacing_meters: 800,
+    max_analysis_stops: 30,
+    overlap_tolerance_meters: 100,
+    overlap_conflict_threshold_pct: 30,
+    facility_count_target: 25,
+    area_population_coverage_target_pct: 50,
+    area_facility_count_target: 3,
+    population_weight: 0.5,
+    facility_weight: 0.25,
+    overlap_weight: 0.25,
+    population_assumption: "uniform_within_polygon",
+    catchment_method: "network_isochrone",
+    catchment_provider: "openrouteservice",
+  },
 };
 
 const analysis = {
@@ -68,7 +111,8 @@ const analysis = {
     score_delta: 4.2,
     population_delta: 3100,
     population_per_km_delta: 248,
-    result: { ...score, score: 90.2, population_covered: 62880 },
+    facility_delta: 2,
+    result: { ...score, score: 90.2, population_covered: 62880, facility_count: 25, facility_score: 100 },
   },
 };
 
@@ -148,17 +192,51 @@ test("draws a route and renders verified results", async ({ page }) => {
 
   await expect(page.locator(".score-ring-ws strong")).toHaveText("86");
   await expect(page.locator(".metric-cell").filter({ hasText: "POPULASI" }).first()).toContainText("59.780");
+  await expect(page.locator(".metric-cell").filter({ hasText: "FASILITAS" }).first()).toContainText("23");
   await expect(page.getByText(/Rute menjangkau 59.780 warga/)).toBeVisible();
   await expect(page.getByText("Tinjau pergeseran 500 meter ke utara.")).toBeVisible();
   await expect(page.getByText("POPULASI/KM", { exact: true })).toBeVisible();
-  await expect(page.getByText("BUFFER", { exact: true })).toBeVisible();
+  await expect(page.getByText("HALTE", { exact: true })).toBeVisible();
   await expect(page.getByText("JALAN", { exact: true })).toHaveCount(0);
   await expect(page.locator(".result-readiness")).toContainText("belum untuk keputusan publik");
+  await expect(page.getByText("pasar 3")).toBeVisible();
+  await expect(page.getByText("sekolah 5")).toBeVisible();
+  await expect(page.getByText("rumah sakit 1")).toBeVisible();
+  await expect(page.getByText("Kecamatan Wates")).toBeVisible();
+  await expect(page.getByText("80/100")).toBeVisible();
+  await expect(page.locator(".map-feature-analysis-stop").first()).toBeVisible();
+  await expect(page.locator(".map-feature-overlap")).toBeVisible();
+  await expect(page.locator(".conflict-badge")).toHaveCount(0);
+  await expect(page.locator(".metric-cell").filter({ hasText: "OVERLAP" }).first()).toContainText("18%");
 
   await page.getByRole("button", { name: /Terapkan Rekomendasi/ }).click();
   await expect.poll(() => analysisCalls).toBe(2);
   await expect.poll(() => snapCalls).toBe(2);
   await expect(page.locator(".score-ring-ws strong")).toHaveText("86");
+});
+
+test("flags overlap conflict above the configured threshold", async ({ page }) => {
+  await mockContext(page);
+  const conflicting = {
+    ...analysis,
+    baseline: {
+      ...analysis.baseline,
+      overlap_pct: 47,
+      overlap_conflict: true,
+      overlap_geojson: { type: "LineString", coordinates: [[110.11, -7.86], [110.15, -7.84]] },
+    },
+  };
+  await page.route("**/api/analyze", (route) => route.fulfill({ json: conflicting }));
+  await page.route("**/api/insight", (route) => route.fulfill({ json: { summary: "Ringkasan.", actions: [], source: "template" } }));
+  await page.route("**/api/route-snap", (route) => route.fulfill({ json: snapResult }));
+
+  await page.goto("/workspace");
+  await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.getByRole("button", { name: "Evaluasi" }).click();
+
+  await expect(page.locator(".conflict-badge")).toHaveText("Konflik >30%");
+  await expect(page.locator(".metric-cell").filter({ hasText: "OVERLAP" }).first()).toContainText("47%");
+  await expect(page.locator(".map-feature-overlap")).toBeVisible();
 });
 
 test("selects, inspects, and focuses display-safe map features", async ({ page }) => {
@@ -378,6 +456,28 @@ test("validates route snapping requests before calling the provider", async ({ r
   expect(await response.json()).toEqual({ error: "Rute harus berupa GeoJSON LineString dengan 2–2.000 titik." });
 });
 
+test("rejects zero-length analysis routes before calling spatial providers", async ({ request }) => {
+  const response = await request.post("/api/analyze", {
+    data: { route: { type: "LineString", coordinates: [[110.1, -7.8], [110.1, -7.8]] } },
+  });
+  expect(response.status()).toBe(400);
+  expect(await response.json()).toEqual({ error: "Panjang rute harus antara 1 meter dan 200 kilometer." });
+});
+
+test("reports deployment readiness without exposing credentials", async ({ request }) => {
+  const response = await request.get("/api/health");
+  expect(response.status()).toBe(200);
+  const payload = await response.json();
+  expect(payload.status).toBe("ok");
+  expect(payload.services).toEqual({
+    supabase: expect.any(Boolean),
+    road_router: expect.any(Boolean),
+    network_isochrone: expect.any(Boolean),
+    ai_insight: expect.any(Boolean),
+  });
+  expect(JSON.stringify(payload)).not.toContain(process.env.SUPABASE_ANON_KEY || "never-present");
+});
+
 test("drags the complete route without changing its shape", async ({ page }) => {
   await mockContext(page);
   await page.goto("/workspace");
@@ -518,7 +618,7 @@ test("landing follows the reference flow and runs the demo", async ({ page }) =>
   const evaluate = page.getByRole("button", { name: "Evaluasi" });
   await expect(evaluate).toBeVisible();
   await evaluate.click();
-  await expect(page.getByText("Menghitung buffer 500 m dan overlay data...")).toBeVisible();
+  await expect(page.getByText("Menghitung catchment halte, POI, dan overlay data...")).toBeVisible();
   await expect(page.getByText("59.780 warga")).toBeVisible({ timeout: 5_000 });
 });
 

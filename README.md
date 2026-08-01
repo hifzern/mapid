@@ -6,10 +6,13 @@ Public WebGIS for drawing a proposed transit corridor and receiving a transparen
 
 - Next.js serves the landing page, attributed OpenStreetMap/MAPID basemap, Leaflet workspace, and same-origin API proxy.
 - OSRM turns drawn, edited, dragged, and recommended geometry into road-following routes before evaluation.
-- Supabase/PostGIS owns study data, 500 m buffers, population coverage, overlap, and the 16-candidate alignment search.
+- Next.js derives analysis stops and optionally requests 10-minute walking isochrones from OpenRouteService. PostGIS uses an explicitly labelled 500 m buffer per stop when the provider is unavailable.
+- Supabase/PostGIS owns study data, population coverage, POI impact scoring, per-area scores, overlap conflict detection (default >30% flagged and highlighted), and the 16-candidate alignment search.
 - FastAPI sends a whitelisted result payload to OpenAI and rejects unsupported numbers.
 
 Workspace route drawing, vertex editing, whole-route dragging, scenarios, undo/redo, and GeoJSON/JSON export are local to the browser session. No login, server persistence, road score, PDF export, share link, or raw-data endpoint is included.
+
+Evaluation output: composite accessibility score (0–100) weighted by population per kilometre, public-facility impact, and route overlap; stop catchments; per-kecamatan scores sourced from `population_grid.admin_name`; facility counts by category; highlighted overlap segments; and a recommended alignment. Applying a recommendation always snaps it to the road network and re-runs the complete analysis.
 
 ## Local setup
 
@@ -23,6 +26,7 @@ Apply `supabase/migrations/` to a PostGIS-enabled Supabase project, then load `s
 
 The workspace uses OpenStreetMap by default. Set `NEXT_PUBLIC_MAPID_TILE_URL` and attribution only when an approved MAPID tile template is available. Verified contextual layers and route analysis require `SUPABASE_ANON_KEY`.
 The public OSRM endpoint is suitable for development only. Production should set `OSRM_BASE_URL` to a managed/self-hosted router and `OSRM_PROFILE` to an approved bus-capable profile.
+Set `ISOCHRONE_API_KEY` for network walking catchments. Without it, analysis remains operational but reports `stop_buffer` rather than claiming a network isochrone.
 
 ```sh
 python -m venv .venv
@@ -50,5 +54,12 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/scoring.sql
 - Configure a production road router with an approved bus profile, service limits, and monitoring; do not depend on the public OSRM demo endpoint.
 - Run the browser-to-PostGIS workflow against real Kulon Progo corridors and the SQL scoring checks before release. The AI service is optional because deterministic insight remains available.
 - Configure rate limiting and error monitoring at the deployment edge for `/api/map-context`, `/api/analyze`, `/api/route-snap`, and `/api/insight`.
+
+## Vercel deployment
+
+- Configure `SUPABASE_URL` and `SUPABASE_ANON_KEY`; the public workspace cannot analyze routes without them.
+- Configure `OSRM_BASE_URL`/`OSRM_PROFILE` for road snapping and `ISOCHRONE_API_KEY` for network catchments. All values remain server-only.
+- Deploy FastAPI separately and set `AI_SERVICE_URL`/`AI_SERVICE_TOKEN` when AI prose is required. Vercel returns a deterministic verified narrative when that service is absent.
+- Use `/api/health` to confirm which integrations are configured without exposing credentials.
 
 The public release remains blocked until those data and methodology checks are complete.

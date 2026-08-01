@@ -205,8 +205,16 @@ begin
     'sources', v_sources,
     'methodology', jsonb_build_object(
       'buffer_meters', v_config.buffer_meters,
+      'walking_minutes', v_config.walking_minutes,
+      'stop_spacing_meters', v_config.stop_spacing_meters,
+      'max_analysis_stops', v_config.max_analysis_stops,
       'overlap_tolerance_meters', v_config.overlap_tolerance_meters,
+      'overlap_conflict_threshold_pct', v_config.overlap_conflict_threshold_pct,
+      'facility_count_target', v_config.facility_count_target,
+      'area_population_coverage_target_pct', v_config.area_population_coverage_target_pct,
+      'area_facility_count_target', v_config.area_facility_count_target,
       'population_weight', v_config.population_weight,
+      'facility_weight', v_config.facility_weight,
       'overlap_weight', v_config.overlap_weight,
       'population_assumption', 'uniform_within_polygon',
       'target_calibration_status', case
