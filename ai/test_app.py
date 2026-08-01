@@ -11,13 +11,20 @@ PAYLOAD = {
     "population_per_km": 4782.4,
     "overlap_pct": 18,
     "property_go_count": 167,
+    "facility_count": 12,
+    "facility_score": 80,
+    "stop_count": 9,
     "buffer_meters": 500,
+    "walking_minutes": 10,
+    "catchment_method": "network_isochrone",
+    "top_area": "Kecamatan Wates",
     "recommendation": {
         "direction": "north",
         "distance_meters": 500,
         "score_delta": 4.2,
         "population_delta": 3100,
         "population_per_km_delta": 248,
+        "facility_delta": 2,
     },
 }
 
@@ -40,6 +47,7 @@ def test_insight_guard_and_fallback(monkeypatch):
     response = service.insight(data, "test-token")
     assert response.source == "template"
     assert "999" not in response.summary
+    assert "12 fasilitas" in response.summary
 
 
 def test_verified_narrative_is_accepted(monkeypatch):

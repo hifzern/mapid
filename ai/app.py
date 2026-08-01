@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException
 from openai import OpenAI
@@ -18,6 +19,7 @@ class RecommendationInput(BaseModel):
     score_delta: float
     population_delta: int
     population_per_km_delta: float
+    facility_delta: int
 
 
 class VerifiedAnalysis(BaseModel):
@@ -27,7 +29,13 @@ class VerifiedAnalysis(BaseModel):
     population_per_km: float = Field(ge=0)
     overlap_pct: float = Field(ge=0, le=100)
     property_go_count: int = Field(ge=0)
+    facility_count: int = Field(ge=0)
+    facility_score: float = Field(ge=0, le=100)
+    stop_count: int = Field(ge=2, le=30)
     buffer_meters: int = Field(gt=0)
+    walking_minutes: int = Field(gt=0, le=60)
+    catchment_method: Literal["network_isochrone", "stop_buffer"]
+    top_area: str | None = Field(default=None, max_length=120)
     recommendation: RecommendationInput | None = None
 
 
@@ -44,10 +52,16 @@ app = FastAPI(title="TAE AI Insight", docs_url=None, redoc_url=None)
 
 
 def fallback(data: VerifiedAnalysis) -> Narrative:
+    catchment = (
+        f"isochrone berjalan kaki {data.walking_minutes} menit dari {data.stop_count} halte"
+        if data.catchment_method == "network_isochrone"
+        else f"buffer {data.buffer_meters} meter dari {data.stop_count} halte"
+    )
     if data.recommendation:
         recommendation = data.recommendation
         summary = (
-            f"Rute menjangkau {data.population_covered} warga dengan overlap "
+            f"Rute menjangkau {data.population_covered} warga dan "
+            f"{data.facility_count} fasilitas publik melalui {catchment}, dengan overlap "
             f"{data.overlap_pct}%. Alternatif terbaik meningkatkan skor "
             f"sebesar {recommendation.score_delta}."
         )
@@ -58,7 +72,8 @@ def fallback(data: VerifiedAnalysis) -> Narrative:
         ]
     else:
         summary = (
-            f"Rute menjangkau {data.population_covered} warga dengan overlap "
+            f"Rute menjangkau {data.population_covered} warga dan "
+            f"{data.facility_count} fasilitas publik melalui {catchment}, dengan overlap "
             f"{data.overlap_pct}%. Tidak ada pergeseran teruji yang memperbaiki skor."
         )
         actions = ["Pertahankan alignment untuk kajian awal dan lanjutkan validasi lapangan."]
@@ -82,7 +97,11 @@ def has_only_verified_numbers(draft: NarrativeDraft, data: VerifiedAnalysis) -> 
         data.population_per_km,
         data.overlap_pct,
         data.property_go_count,
+        data.facility_count,
+        data.facility_score,
+        data.stop_count,
         data.buffer_meters,
+        data.walking_minutes,
     ]
     if data.recommendation:
         values.extend([
@@ -90,6 +109,7 @@ def has_only_verified_numbers(draft: NarrativeDraft, data: VerifiedAnalysis) -> 
             data.recommendation.score_delta,
             data.recommendation.population_delta,
             data.recommendation.population_per_km_delta,
+            data.recommendation.facility_delta,
         ])
     allowed = set().union(*(number_variants(value) for value in values))
     tokens = re.findall(r"[+-]?\d+(?:[.,]\d+)*", " ".join([draft.summary, *draft.actions]))
@@ -108,7 +128,8 @@ def generate(data: VerifiedAnalysis) -> NarrativeDraft:
             "Gunakan Bahasa Indonesia yang ringkas dan aktif. Hanya gunakan fakta dan "
             "angka yang ada di input. Jangan menghitung, memperkirakan, atau menambah "
             "statistik baru. Jangan memberi nomor pada daftar tindakan. Jika rekomendasi "
-            "null, nyatakan bahwa kandidat yang diuji tidak meningkatkan skor."
+            "null, nyatakan bahwa kandidat yang diuji tidak meningkatkan skor. Jangan "
+            "menyebut buffer halte sebagai isochrone jaringan."
         ),
         input=json.dumps(data.model_dump(), ensure_ascii=False),
         text_format=NarrativeDraft,

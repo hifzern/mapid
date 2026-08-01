@@ -25,19 +25,20 @@ import HeroRouteCanvas from "@/components/landing/HeroRouteCanvas";
 const howItWorks = [
   { title: "Pilih Layer", body: "Aktifkan batas Kulon Progo, rute existing, kepadatan penduduk, dan titik aktivitas." },
   { title: "Gambar Rute", body: "Buat koridor simulasi titik demi titik di atas peta kawasan Wates dan sekitarnya." },
-  { title: "Hitung Spasial", body: "Sistem membuat buffer 500 m, menghitung populasi per km, dan mengukur overlap rute." },
+  { title: "Hitung Spasial", body: "Sistem menyusun halte, catchment berjalan kaki, dampak POI, populasi per km, dan overlap rute." },
   { title: "Bandingkan Hasil", body: "Lihat skor, breakdown metrik, insight, dan alternatif translasi seluruh rute." },
 ];
 
 const dataSources = [
   { title: "OpenStreetMap", body: "Basemap dan batas administratif Kabupaten Kulon Progo berlisensi ODbL.", icon: Map },
   { title: "Property GO", body: "Indikasi titik aktivitas dan properti strategis sebagai konteks perjalanan.", icon: Building2 },
-  { title: "Data Populasi", body: "Mengestimasi warga yang masuk dalam buffer layanan 500 meter dari koridor.", icon: UsersRound },
+  { title: "Data Populasi", body: "Mengestimasi warga yang masuk dalam catchment layanan setiap halte analisis.", icon: UsersRound },
   { title: "Batas Administrasi", body: "Membatasi evaluasi pada wilayah studi Kulon Progo dan area sekitar Wates.", icon: Layers3 },
 ];
 
 const methodology = [
-  "Buffer 500 m",
+  "Isochrone 10 menit / fallback 500 m",
+  "Dampak POI publik",
   "Populasi per kilometer",
   "Overlap rute existing",
   "16 translasi alternatif",
@@ -46,8 +47,8 @@ const methodology = [
 
 const faqs = [
   {
-    question: "Apa maksud buffer 500 m?",
-    answer: "Buffer adalah area layanan di sekitar seluruh koridor yang digunakan untuk mengestimasi populasi dan titik aktivitas yang terjangkau.",
+    question: "Bagaimana area layanan dihitung?",
+    answer: "Sistem memakai isochrone berjalan kaki 10 menit dari halte saat provider tersedia. Tanpa provider, buffer 500 meter per halte dipakai dan ditandai sebagai estimasi fallback.",
   },
   {
     question: "Apakah data Kulon Progo ini resmi?",
@@ -67,7 +68,7 @@ const demoResult = {
   score: 86,
   coverage: "59.780 warga",
   overlap: "18%",
-  property: "167",
+  facilities: "23",
   insight: "Geser seluruh koridor 500 m ke utara untuk menaikkan cakupan tanpa menambah overlap secara berlebihan.",
 };
 
@@ -187,7 +188,7 @@ export default function LandingPage() {
             Simulasikan koridor Kulon Progo dan lihat skor aksesibilitas dalam satu alur.
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-slate-600">
-            Prototype merangkum layer peta, buffer 500 m, populasi per kilometer, overlap rute,
+            Prototype merangkum layer peta, catchment halte, dampak POI, populasi per kilometer, overlap rute,
             dan rekomendasi alternatif dalam format yang mudah dipresentasikan.
           </p>
           <div className="mt-8 flex justify-center gap-3">
@@ -236,7 +237,7 @@ export default function LandingPage() {
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Koridor usulan</p>
                 <p className="mt-1 font-heading text-xl font-bold">Koridor Wates–Sentolo</p>
                 <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-                  <span>Buffer 500 m</span><span>Rute existing</span><span>Populasi</span><span>Property GO</span>
+                  <span>Catchment halte</span><span>Rute existing</span><span>Populasi</span><span>Fasilitas publik</span>
                 </div>
               </div>
               <div className="flex gap-3">
@@ -258,13 +259,13 @@ export default function LandingPage() {
             <div className="mt-8 min-h-[260px] rounded-premium border border-border bg-background p-5" aria-live="polite">
               {!isEvaluating && !result ? (
                 <div className="flex h-full min-h-[220px] items-center justify-center text-center text-sm leading-6 text-slate-500">
-                  Rute sudah disiapkan. Klik Evaluasi untuk menghitung simulasi buffer dan overlay.
+                  Rute sudah disiapkan. Klik Evaluasi untuk menghitung simulasi catchment dan overlay.
                 </div>
               ) : null}
               {isEvaluating ? (
                 <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-4 text-center">
                   <Loader2 className="animate-spin text-primary" size={30} />
-                  <p className="font-medium text-slate-700">Menghitung buffer 500 m dan overlay data...</p>
+                  <p className="font-medium text-slate-700">Menghitung catchment halte, POI, dan overlay data...</p>
                 </div>
               ) : null}
               {result ? (
@@ -276,7 +277,7 @@ export default function LandingPage() {
                   <div className="mt-6 grid grid-cols-3 gap-3">
                     <Metric label="Populasi" value={result.coverage} />
                     <Metric label="Overlap" value={result.overlap} />
-                    <Metric label="Property" value={result.property} />
+                    <Metric label="Fasilitas" value={result.facilities} />
                   </div>
                   <div className="mt-5 rounded-2xl border border-border bg-white p-4 text-sm leading-6 text-slate-700">{result.insight}</div>
                 </div>

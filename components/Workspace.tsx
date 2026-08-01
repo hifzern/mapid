@@ -445,9 +445,12 @@ export default function Workspace() {
   function aiParagraphs(a: AnalysisResult): string[] {
     const b = a.baseline;
     const lines: string[] = [];
-    lines.push(`Rute ini menjangkau ${b.population_covered.toLocaleString("id-ID")} warga dalam buffer ${b.formula.buffer_meters} m dengan overlap rute existing ${b.overlap_pct}%.`);
-    if (b.overlap_pct > 15) {
-      lines.push(`Overlap ${b.overlap_pct}% masih perlu dikendalikan. Prioritaskan koridor dengan tumpang tindih minimal.`);
+    const catchment = b.catchment_method === "network_isochrone"
+      ? `isochrone berjalan kaki ${b.formula.walking_minutes} menit dari ${b.stop_count} halte`
+      : `buffer ${b.formula.buffer_meters} m dari ${b.stop_count} halte`;
+    lines.push(`Rute ini menjangkau ${b.population_covered.toLocaleString("id-ID")} warga dan ${b.facility_count} fasilitas publik melalui ${catchment}, dengan overlap rute existing ${b.overlap_pct}%.`);
+    if (b.overlap_conflict) {
+      lines.push(`Overlap ${b.overlap_pct}% melewati ambang konflik ${b.formula.overlap_conflict_threshold_pct}%. Prioritaskan koridor dengan tumpang tindih minimal.`);
     } else {
       lines.push(`Overlap ${b.overlap_pct}% masih dalam toleransi perencanaan.`);
     }
@@ -586,13 +589,15 @@ export default function Workspace() {
 
         <div className="panel-block">
           <div className="panel-label"><Layers3 size={16} /> Layer analisis</div>
-          {(["routes", "population", "property", "facilities", "buffer"] as const).map((layer) => (
+          {(["routes", "population", "property", "facilities", "buffer", "stops", "overlap"] as const).map((layer) => (
             <label key={layer} className="layer-toggle">
               <span><i className={`swatch ${layer}-swatch`} /> {
                 layer === "routes" ? "Rute existing" :
                 layer === "population" ? "Kepadatan penduduk" :
                 layer === "property" ? "Property GO" :
-                layer === "facilities" ? "Fasilitas publik" : "Buffer layanan"
+                layer === "facilities" ? "Fasilitas publik" :
+                layer === "stops" ? "Halte analisis" :
+                layer === "overlap" ? "Segmen overlap" : "Catchment layanan"
               }</span>
               <input type="checkbox" checked={layers[layer]} onChange={() => toggleLayer(layer)} />
             </label>
@@ -638,9 +643,10 @@ export default function Workspace() {
         <div className="panel-block settings-block">
           <div className="panel-label">METODOLOGI TETAP</div>
           <div className="methodology-summary">
-            <span><b>{context?.methodology.buffer_meters || 500} m</b> buffer layanan</span>
-            <span><b>{Math.round((context?.methodology.population_weight || 0.625) * 100)}%</b> populasi/km</span>
-            <span><b>{Math.round((context?.methodology.overlap_weight || 0.375) * 100)}%</b> anti-overlap</span>
+            <span><b>{context?.methodology.walking_minutes || 10} menit</b> akses halte</span>
+            <span><b>{Math.round((context?.methodology.population_weight || 0.5) * 100)}%</b> populasi/km</span>
+            <span><b>{Math.round((context?.methodology.facility_weight || 0.25) * 100)}%</b> dampak POI</span>
+            <span><b>{Math.round((context?.methodology.overlap_weight || 0.25) * 100)}%</b> anti-overlap</span>
           </div>
           <p>Nilai dihitung di PostGIS dan tidak dapat diubah dari browser.</p>
         </div>
@@ -736,6 +742,7 @@ export default function Workspace() {
             {snapPreview && <span><i className="legend-snap-candidate" /> Kandidat jalan</span>}
             <span><i className="legend-recommended" /> Rekomendasi</span>
             <span><i className="legend-existing" /> Rute eksisting</span>
+            {analysis && <span><i className="legend-stop" /> Halte analisis</span>}
             {importedDatasets.some((dataset) => dataset.visible) && <span><i className="legend-imported" /> Dataset impor</span>}
           </div>
         </div>
@@ -773,7 +780,7 @@ export default function Workspace() {
             <LoaderCircle className="spin" size={28} />
             <h2>Menganalisis konteks rute…</h2>
             <div className="loading-steps">
-              {["Memvalidasi geometri rute", "Membentuk buffer 500 m", "Menghitung cakupan populasi", "Mendeteksi overlap existing", "Menguji 16 alternatif alignment", "Menyusun hasil evaluasi"].map((step, i) => {
+              {["Memvalidasi geometri rute", "Menyusun halte dan catchment", "Menghitung populasi dan POI", "Mendeteksi overlap existing", "Menguji 16 alternatif alignment", "Menyusun hasil evaluasi"].map((step, i) => {
                 const done = i < progressStep;
                 const active = i === progressStep;
                 return (
@@ -802,7 +809,14 @@ export default function Workspace() {
               <div>
                 <p className="panel-kicker">SKOR AKSESIBILITAS</p>
                 <h2>Hasil evaluasi</h2>
-                <p className="result-method">Perhitungan spasial PostGIS</p>
+                <p className="result-method">
+                  {analysis.baseline.catchment_method === "network_isochrone"
+                    ? `Isochrone jaringan ${analysis.baseline.formula.walking_minutes} menit · PostGIS`
+                    : `Buffer halte ${analysis.baseline.formula.buffer_meters} m · PostGIS fallback`}
+                </p>
+                {analysis.baseline.catchment_method === "stop_buffer" && (
+                  <p className="result-readiness provisional">Provider isochrone belum aktif · gunakan sebagai estimasi awal</p>
+                )}
                 {readiness !== "verified" && (
                   <p className={`result-readiness ${readiness}`}>Data {sourceStatusLabel[readiness].toLowerCase()} · belum untuk keputusan publik</p>
                 )}
@@ -817,7 +831,7 @@ export default function Workspace() {
               >
                 <div><strong>{Math.round(analysis.baseline.score)}</strong><span>/ 100</span></div>
               </div>
-              <div><span>Skor aksesibilitas transit</span><p>Gabungan cakupan populasi per km dan penghindaran overlap.</p></div>
+              <div><span>Skor aksesibilitas transit</span><p>Gabungan populasi per km, dampak fasilitas publik, dan penghindaran overlap.</p></div>
             </div>
 
             <div className="metrics-grid-6">
@@ -827,14 +841,17 @@ export default function Workspace() {
                 <div className="metric-unit">jiwa terjangkau</div>
               </div>
               <div className="metric-cell">
-                <div className="metric-label">PROPERTY</div>
-                <div className="metric-value">{analysis.baseline.property_go_count.toLocaleString("id-ID")}</div>
-                <div className="metric-unit">titik aktivitas</div>
+                <div className="metric-label">FASILITAS</div>
+                <div className="metric-value">{analysis.baseline.facility_count.toLocaleString("id-ID")}</div>
+                <div className="metric-unit">fasilitas publik</div>
               </div>
               <div className="metric-cell">
                 <div className="metric-label">OVERLAP</div>
                 <div className="metric-value">{analysis.baseline.overlap_pct}%</div>
                 <div className="metric-unit">rute existing</div>
+                {analysis.baseline.overlap_conflict && (
+                  <div className="conflict-badge">Konflik &gt;{analysis.baseline.formula.overlap_conflict_threshold_pct}%</div>
+                )}
               </div>
               <div className="metric-cell">
                 <div className="metric-label">PANJANG</div>
@@ -847,16 +864,47 @@ export default function Workspace() {
                 <div className="metric-unit">jiwa per km</div>
               </div>
               <div className="metric-cell">
-                <div className="metric-label">BUFFER</div>
-                <div className="metric-value">{analysis.baseline.formula.buffer_meters}</div>
-                <div className="metric-unit">meter</div>
+                <div className="metric-label">HALTE</div>
+                <div className="metric-value">{analysis.baseline.stop_count}</div>
+                <div className="metric-unit">titik analisis</div>
               </div>
             </div>
 
             <div className="route-facts">
               <span>Populasi/km <b>{analysis.baseline.population_per_km.toLocaleString("id-ID")}</b></span>
-              <span>Buffer layanan <b>{analysis.baseline.formula.buffer_meters} m</b></span>
+              <span>Skor POI <b>{Math.round(analysis.baseline.facility_score)}/100</b></span>
+              <span>Catchment <b>{analysis.baseline.catchment_method === "network_isochrone" ? `${analysis.baseline.formula.walking_minutes} menit` : `${analysis.baseline.formula.buffer_meters} m`}</b></span>
             </div>
+
+            {analysis.baseline.facilities_by_type.length > 0 && (
+              <div className="breakdown-block">
+                <p className="panel-kicker">FASILITAS TERJANGKAU</p>
+                <div className="facility-chips">
+                  {analysis.baseline.facilities_by_type.map((item) => (
+                    <span key={item.kategori} className="facility-chip">
+                      {item.kategori.replace("_", " ")} <b>{item.count}</b>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {analysis.baseline.population_by_area.length > 0 && (
+              <div className="breakdown-block">
+                <p className="panel-kicker">SKOR PER KECAMATAN</p>
+                <ul className="area-list">
+                  {analysis.baseline.population_by_area.map((area) => (
+                    <li key={area.admin_name}>
+                      <span>
+                        <strong>{area.admin_name}</strong>
+                        <small>{area.coverage_pct}% penduduk · {area.facility_count} fasilitas</small>
+                      </span>
+                      <b>{Math.round(area.score)}/100</b>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {analysis.recommendation && (
               <section className="comparison-section">
@@ -877,7 +925,7 @@ export default function Workspace() {
                       { label: "Populasi", base: analysis.baseline.population_covered, rec: analysis.recommendation.result.population_covered, unit: "jiwa", fmt: (v: number) => v.toLocaleString("id-ID") },
                       { label: "Overlap", base: analysis.baseline.overlap_pct, rec: analysis.recommendation.result.overlap_pct, unit: "%", fmt: (v: number) => `${v}%` },
                       { label: "Panjang", base: analysis.baseline.route_length_km, rec: analysis.recommendation.result.route_length_km, unit: "km", fmt: (v: number) => `${v.toLocaleString("id-ID")} km` },
-                      { label: "Property", base: analysis.baseline.property_go_count, rec: analysis.recommendation.result.property_go_count, unit: "", fmt: (v: number) => v.toLocaleString("id-ID") },
+                      { label: "Fasilitas", base: analysis.baseline.facility_count, rec: analysis.recommendation.result.facility_count, unit: "", fmt: (v: number) => v.toLocaleString("id-ID") },
                     ].map(({ label, base, rec, unit, fmt }) => {
                       const delta = rec - base;
                       const improvement = label === "Overlap" ? delta <= 0 : delta >= 0;
@@ -929,6 +977,7 @@ export default function Workspace() {
                 <div className="delta-row">
                   <span>Skor <b>+{analysis.recommendation.score_delta}</b></span>
                   <span>Populasi/km <b>+{analysis.recommendation.population_per_km_delta.toLocaleString("id-ID")}</b></span>
+                  <span>Fasilitas <b>{analysis.recommendation.facility_delta >= 0 ? "+" : ""}{analysis.recommendation.facility_delta}</b></span>
                 </div>
                 <p className="recommendation-note">Estimasi awal; hasil dihitung ulang setelah rute disesuaikan ke jaringan jalan.</p>
                 <button className="apply-button" disabled={snapLoading || Boolean(snapPreview)} onClick={applyRecommendation}>

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { isLineString, type LineString, type Position, type SnapEndpoint } from "@/lib/types";
 
+export const runtime = "nodejs";
+export const maxDuration = 15;
+
 const MAX_WAYPOINTS = 50;
 
 function sampleRoute(route: LineString) {
@@ -38,7 +41,14 @@ export async function POST(request: Request) {
   const coordinates = sampledCoordinates
     .map(([longitude, latitude]) => `${longitude},${latitude}`)
     .join(";");
-  const baseUrl = (process.env.OSRM_BASE_URL || "https://router.project-osrm.org").replace(/\/+$/, "");
+  const configuredBaseUrl = process.env.OSRM_BASE_URL?.trim();
+  if (process.env.VERCEL_ENV === "production" && !configuredBaseUrl) {
+    return NextResponse.json(
+      { error: "Router jalan produksi belum dikonfigurasi." },
+      { status: 503 },
+    );
+  }
+  const baseUrl = (configuredBaseUrl || "https://router.project-osrm.org").replace(/\/+$/, "");
   const profile = (process.env.OSRM_PROFILE || "driving").trim();
   if (!/^[a-z0-9_-]+$/i.test(profile)) {
     return NextResponse.json({ error: "Profil routing tidak valid." }, { status: 500 });
