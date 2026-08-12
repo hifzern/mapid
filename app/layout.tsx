@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Barlow_Condensed, DM_Sans, IBM_Plex_Mono, Inter, Source_Sans_3 } from "next/font/google";
+import "lenis/dist/lenis.css";
 import "./globals.css";
 
 const display = Barlow_Condensed({ subsets: ["latin"], variable: "--font-barlow", weight: ["600", "700"] });
