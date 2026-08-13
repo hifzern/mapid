@@ -268,11 +268,15 @@ function DrawingControl({ route, onRouteChange, snapPreview }: Pick<Props, "rout
 
     if (activeTool === "draw") {
       setRouteState("drawing");
-      drawHandler.current = new L.Draw.Polyline(map as L.DrawMap, {
+      const handler = new L.Draw.Polyline(map as L.DrawMap, {
         shapeOptions: { color: "#255fdb", weight: 5 },
       });
-      drawHandler.current.enable();
+      drawHandler.current = handler;
+      const finishOnDoubleClick = () => (handler as unknown as { finishShape: () => void }).finishShape();
+      map.on("dblclick", finishOnDoubleClick);
+      handler.enable();
       return () => {
+        map.off("dblclick", finishOnDoubleClick);
         drawHandler.current?.disable();
       };
     }
