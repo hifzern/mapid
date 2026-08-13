@@ -13,7 +13,7 @@ export default defineConfig({
     trace: "retain-on-failure",
     launchOptions: {
       executablePath: "/usr/bin/chromium",
-      args: ["--no-sandbox"],
+      args: ["--no-sandbox", "--enable-unsafe-swiftshader"],
     },
   },
   webServer: {
