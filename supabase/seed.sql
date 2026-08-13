@@ -9,7 +9,11 @@ insert into public.study_area (name, source, geom) values (
 );
 
 update public.scoring_config
-set population_per_km_target = 5000
+set population_per_km_target = 5000,
+    facility_count_target = 5,
+    population_weight = 0.500,
+    facility_weight = 0.250,
+    overlap_weight = 0.250
 where id = true;
 
 insert into public.existing_routes (name, route_type, source, geom) values
@@ -19,10 +23,10 @@ insert into public.existing_routes (name, route_type, source, geom) values
    private.route_from_geojson('{"type":"LineString","coordinates":[[110.08,-7.75],[110.13,-7.80],[110.16,-7.86],[110.20,-7.89]]}'));
 
 insert into public.population_grid (admin_name, population, source, geom) values
-  ('Grid Wates Barat', 18000, 'synthetic-development-seed', extensions.st_multi(extensions.st_makeenvelope(110.04,-7.91,110.10,-7.84,4326))),
-  ('Grid Wates Tengah', 26000, 'synthetic-development-seed', extensions.st_multi(extensions.st_makeenvelope(110.10,-7.91,110.17,-7.82,4326))),
-  ('Grid Sentolo', 15000, 'synthetic-development-seed', extensions.st_multi(extensions.st_makeenvelope(110.17,-7.88,110.25,-7.78,4326))),
-  ('Grid Nanggulan', 11000, 'synthetic-development-seed', extensions.st_multi(extensions.st_makeenvelope(110.08,-7.80,110.16,-7.70,4326)));
+  ('Kecamatan Wates', 18000, 'synthetic-development-seed', extensions.st_multi(extensions.st_makeenvelope(110.04,-7.91,110.10,-7.84,4326))),
+  ('Kecamatan Wates', 26000, 'synthetic-development-seed', extensions.st_multi(extensions.st_makeenvelope(110.10,-7.91,110.17,-7.82,4326))),
+  ('Kecamatan Sentolo', 15000, 'synthetic-development-seed', extensions.st_multi(extensions.st_makeenvelope(110.17,-7.88,110.25,-7.78,4326))),
+  ('Kecamatan Nanggulan', 11000, 'synthetic-development-seed', extensions.st_multi(extensions.st_makeenvelope(110.08,-7.80,110.16,-7.70,4326)));
 
 insert into public.property_go (kategori, jenis, alamat, source, geom) values
   ('Hunian', 'Jual', null, 'synthetic-development-seed', extensions.st_setsrid(extensions.st_point(110.09,-7.87),4326)),

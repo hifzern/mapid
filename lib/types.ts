@@ -10,6 +10,7 @@ export type Geometry =
   | LineString
   | { type: "MultiLineString"; coordinates: Position[][] }
   | { type: "Point"; coordinates: Position }
+  | { type: "MultiPoint"; coordinates: Position[] }
   | { type: "Polygon"; coordinates: Position[][] }
   | { type: "MultiPolygon"; coordinates: Position[][][] };
 
@@ -47,6 +48,23 @@ export type SnapPreview = {
   endpoints: { start: SnapEndpoint; end: SnapEndpoint };
 };
 
+export type FacilityTypeCount = {
+  kategori: string;
+  count: number;
+};
+
+export type AreaCoverage = {
+  admin_name: string;
+  score: number;
+  population_covered: number;
+  population_total: number;
+  coverage_pct: number;
+  facility_count: number;
+  overlap_pct: number;
+};
+
+export type CatchmentMethod = "network_isochrone" | "stop_buffer";
+
 export type RouteScore = {
   score: number;
   route_length_km: number;
@@ -56,14 +74,36 @@ export type RouteScore = {
   population_score: number;
   overlap_pct: number;
   overlap_score: number;
+  overlap_conflict: boolean;
+  overlap_geojson: Geometry | null;
   property_go_count: number;
+  facility_count: number;
+  facility_count_target: number;
+  facility_score: number;
+  facilities_by_type: FacilityTypeCount[];
+  population_by_area: AreaCoverage[];
+  stop_count: number;
+  stops_geojson: Geometry;
+  catchment_geojson: Geometry;
+  catchment_method: CatchmentMethod;
+  catchment_provider: string;
   buffer_geojson: Geometry;
   formula: {
     buffer_meters: number;
+    walking_minutes: number;
+    stop_spacing_meters: number;
+    max_analysis_stops: number;
     overlap_tolerance_meters: number;
+    overlap_conflict_threshold_pct: number;
+    facility_count_target: number;
+    area_population_coverage_target_pct: number;
+    area_facility_count_target: number;
     population_weight: number;
+    facility_weight: number;
     overlap_weight: number;
     population_assumption: string;
+    catchment_method: CatchmentMethod;
+    catchment_provider: string;
   };
 };
 
@@ -74,6 +114,7 @@ export type Recommendation = {
   score_delta: number;
   population_delta: number;
   population_per_km_delta: number;
+  facility_delta: number;
   result: RouteScore;
 };
 
@@ -120,8 +161,16 @@ export type SourceMetadata = {
 
 export type MethodologyMetadata = {
   buffer_meters: number;
+  walking_minutes: number;
+  stop_spacing_meters: number;
+  max_analysis_stops: number;
   overlap_tolerance_meters: number;
+  overlap_conflict_threshold_pct: number;
+  facility_count_target: number;
+  area_population_coverage_target_pct: number;
+  area_facility_count_target: number;
   population_weight: number;
+  facility_weight: number;
   overlap_weight: number;
   population_assumption: string;
   target_calibration_status: SourceStatus;
@@ -179,6 +228,9 @@ function isGeometry(value: unknown): value is Geometry {
   if (!value || typeof value !== "object") return false;
   const geometry = value as { type?: string; coordinates?: unknown };
   if (geometry.type === "Point") return isPosition(geometry.coordinates);
+  if (geometry.type === "MultiPoint") {
+    return Array.isArray(geometry.coordinates) && geometry.coordinates.length > 0 && geometry.coordinates.every(isPosition);
+  }
   if (geometry.type === "LineString") return isLine(geometry.coordinates);
   if (geometry.type === "MultiLineString") {
     return Array.isArray(geometry.coordinates) && geometry.coordinates.length > 0 && geometry.coordinates.every(isLine);
