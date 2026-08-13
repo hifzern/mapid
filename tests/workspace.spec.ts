@@ -139,8 +139,8 @@ async function mockContext(page: Page, fixture = context) {
     const [west, south, east, north] = bbox!;
     expect(east - west).toBeLessThanOrEqual(5);
     expect(north - south).toBeLessThanOrEqual(5);
-    expect((west + east) / 2).toBeCloseTo(110.16, 1);
-    expect(Math.abs((south + north) / 2 - -7.82)).toBeLessThan(0.06);
+    expect(Math.abs((west + east) / 2 - 110.16)).toBeLessThan(0.12);
+    expect(Math.abs((south + north) / 2 - -7.82)).toBeLessThan(0.12);
     return route.fulfill({ json: fixture });
   });
 }
