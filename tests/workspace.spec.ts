@@ -188,6 +188,7 @@ test("draws a route and renders verified results", async ({ page }) => {
   await map.click({ position: { x: mapBox!.width * 0.35, y: mapBox!.height * 0.4 } });
   await map.dblclick({ position: { x: mapBox!.width * 0.65, y: mapBox!.height * 0.3 } });
   const roadPreview = page.getByRole("region", { name: "Preview ikuti jalan" });
+  await expect.poll(() => snapCalls).toBeGreaterThan(0);
   await expect(roadPreview).toBeVisible({ timeout: 15_000 });
   await roadPreview.getByRole("button", { name: "Terapkan" }).click();
   await expect(evaluate).toBeEnabled();
