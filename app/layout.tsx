@@ -1,14 +1,59 @@
 import type { Metadata } from "next";
-import { Barlow_Condensed, DM_Sans, IBM_Plex_Mono, Inter, Roboto_Mono, Source_Sans_3 } from "next/font/google";
+import localFont from "next/font/local";
 import "lenis/dist/lenis.css";
 import "./globals.css";
 
-const display = Barlow_Condensed({ subsets: ["latin"], variable: "--font-barlow", weight: ["600", "700"] });
-const body = Source_Sans_3({ subsets: ["latin"], variable: "--font-source" });
-const metric = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-ibm-mono", weight: ["500", "600", "700"] });
-const landingBody = Inter({ subsets: ["latin"], variable: "--font-inter", weight: ["400", "500", "600", "700"] });
-const landingHeading = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
-const landingMono = Roboto_Mono({ subsets: ["latin"], variable: "--font-roboto-mono", weight: ["400", "500", "700"] });
+const display = localFont({
+  src: [
+    { path: "../public/fonts/barlow-condensed-600-latin.woff2", weight: "600" },
+    { path: "../public/fonts/barlow-condensed-700-latin.woff2", weight: "700" },
+  ],
+  variable: "--font-barlow",
+  display: "swap",
+});
+const body = localFont({
+  src: [{ path: "../public/fonts/source-sans-3-400-latin.woff2", weight: "400" }],
+  variable: "--font-source",
+  display: "swap",
+});
+const metric = localFont({
+  src: [
+    { path: "../public/fonts/ibm-plex-mono-500-latin.woff2", weight: "500" },
+    { path: "../public/fonts/ibm-plex-mono-600-latin.woff2", weight: "600" },
+    { path: "../public/fonts/ibm-plex-mono-700-latin.woff2", weight: "700" },
+  ],
+  variable: "--font-ibm-mono",
+  display: "swap",
+});
+const landingBody = localFont({
+  src: [
+    { path: "../public/fonts/inter-400-latin.woff2", weight: "400" },
+    { path: "../public/fonts/inter-500-latin.woff2", weight: "500" },
+    { path: "../public/fonts/inter-600-latin.woff2", weight: "600" },
+    { path: "../public/fonts/inter-700-latin.woff2", weight: "700" },
+  ],
+  variable: "--font-inter",
+  display: "swap",
+});
+const landingHeading = localFont({
+  src: [
+    { path: "../public/fonts/dm-sans-400-latin.woff2", weight: "400" },
+    { path: "../public/fonts/dm-sans-500-latin.woff2", weight: "500" },
+    { path: "../public/fonts/dm-sans-600-latin.woff2", weight: "600" },
+    { path: "../public/fonts/dm-sans-700-latin.woff2", weight: "700" },
+  ],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+const landingMono = localFont({
+  src: [
+    { path: "../public/fonts/roboto-mono-400-latin.woff2", weight: "400" },
+    { path: "../public/fonts/roboto-mono-500-latin.woff2", weight: "500" },
+    { path: "../public/fonts/roboto-mono-700-latin.woff2", weight: "700" },
+  ],
+  variable: "--font-roboto-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Transight — Analisis Transit Kabupaten Kulon Progo",
