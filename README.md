@@ -19,10 +19,36 @@ Evaluation output: composite accessibility score (0–100) weighted by populatio
 ```sh
 pnpm install
 cp .env.example .env.local
+```
+
+### Backend lokal (Supabase + PostGIS)
+
+```sh
+npx supabase start        # pull + start Postgres/PostGIS/PostgREST lokal (port 54321)
+npx supabase status       # ambil SUPABASE_URL + publishable/anon key
+```
+
+`supabase start` otomatis meng-apply `supabase/migrations/` dan me-load `supabase/seed.sql` (data sintetis dev). Salin `SUPABASE_URL` (mis. `http://127.0.0.1:54321`) dan anon key ke `.env.local`. Catatan: `supabase/config.toml` menonaktifkan storage/analytics/vector (tidak dipakai workspace) supaya stack lokal ringan.
+
+Untuk proyek cloud: apply migrasi + seed yang sama, lalu isi `SUPABASE_URL`/`SUPABASE_ANON_KEY` dari project settings.
+
+### AI insight (FastAPI)
+
+```sh
+. .venv/bin/activate
+pip install -r ai/requirements.txt
+AI_SERVICE_TOKEN=<token sama seperti di .env.local> uvicorn ai.app:app --port 8001
+```
+
+`/api/health` harus melaporkan `supabase`, `road_router`, dan `ai_insight` true. Tanpa `OPENAI_API_KEY` insight memakai narasi deterministik (source `template`); isi key untuk narasi AI asli (source `ai`).
+
+### Jalankan
+
+```sh
 pnpm dev
 ```
 
-Apply `supabase/migrations/` to a PostGIS-enabled Supabase project, then load `supabase/seed.sql` for synthetic development data. Run the AI service only after the scoring RPC is ready:
+The workspace uses OpenStreetMap by default. Set `NEXT_PUBLIC_MAPID_TILE_URL` and attribution only when an approved MAPID tile template is available. Verified contextual layers and route analysis require `SUPABASE_ANON_KEY`.
 
 The workspace uses OpenStreetMap by default. Set `NEXT_PUBLIC_MAPID_TILE_URL` and attribution only when an approved MAPID tile template is available. Verified contextual layers and route analysis require `SUPABASE_ANON_KEY`.
 The public OSRM endpoint is suitable for development only. Production should set `OSRM_BASE_URL` to a managed/self-hosted router and `OSRM_PROFILE` to an approved bus-capable profile.
