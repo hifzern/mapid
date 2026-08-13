@@ -1362,3 +1362,11 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .dash-topbar { flex-direction: column; align-items: flex-start; }
   .dash-continue { flex-direction: column; align-items: flex-start; }
 }
+
+/* Workspace Figma evaluated layout */
+.panel-legend-list { display: flex; flex-direction: column; gap: 8px; }
+.panel-legend-list span { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+.panel-legend-list i { width: 18px; height: 4px; border-radius: 99px; display: block; }
+.radius-setting { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.radius-setting span { color: var(--muted); font-size: 12px; }
+.radius-setting b { font-family: var(--font-metric); font-size: 14px; }

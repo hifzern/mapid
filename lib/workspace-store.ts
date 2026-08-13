@@ -73,6 +73,7 @@ export type Store = {
   switchScenario: (id: string) => void;
   renameScenario: (id: string, name: string) => void;
   deleteScenario: (id: string) => void;
+  duplicateScenario: () => void;
   saveCurrentToScenario: () => void;
 
   resetWorkspace: () => void;
@@ -321,6 +322,26 @@ export const useStore = create<Store>()(persist((set, get) => ({
       ...routeMetrics(next.route),
     });
     get().addToast("Skenario dihapus", "info");
+  },
+
+  duplicateScenario: () => {
+    const { scenarios, activeScenarioId, route, analysis, insight } = get();
+    const active = scenarios.find((s) => s.id === activeScenarioId) || scenarios[0];
+    const scenario = createScenario(`${active.name} (salinan)`);
+    set({
+      scenarios: [...scenarios, scenario],
+      activeScenarioId: scenario.id,
+      route,
+      analysis,
+      insight,
+      routeState: route ? "ready" : "idle",
+      routeHistory: [route],
+      historyIndex: 0,
+      activeTool: "pan",
+      snapPreview: null,
+      ...routeMetrics(route),
+    });
+    get().addToast("Skenario diduplikasi", "success");
   },
 
   saveCurrentToScenario: () => {

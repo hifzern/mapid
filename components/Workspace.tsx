@@ -8,7 +8,6 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
-  Layers3,
   LoaderCircle,
   Play,
   Route as RouteIcon,
@@ -19,6 +18,8 @@ import {
   Undo2,
   Download,
   Plus,
+  Copy,
+  GitCompare,
   Hand,
   Pencil,
   Trash2,
@@ -38,7 +39,7 @@ const TransitMap = dynamic(() => import("./TransitMap"), {
 });
 
 const directionLabel = { north: "utara", south: "selatan", east: "timur", west: "barat" };
-const toolLabels = { pan: "Jelajah", draw: "Gambar (D)", edit: "Edit (E)" };
+const toolLabels = { pan: "Select (V)", draw: "Gambar (D)", edit: "Edit Route (E)" };
 const sourceStatusLabel: Record<SourceStatus, string> = {
   demo: "Demo",
   provisional: "Provisional",
@@ -155,7 +156,7 @@ const {
   pushRouteHistory, addToast, setLoading, setRouteState, setError, setInsight,
   setAnalysis, saveCurrentToScenario, setInsightLoading, renameScenario,
   deleteScenario, setActiveTool, undo, redo, canUndo, canRedo, toggleLayer,
-  switchScenario, createScenario, setContext, setMapNotice, addImportedDataset,
+  switchScenario, createScenario, duplicateScenario, setContext, setMapNotice, addImportedDataset,
   toggleImportedDataset, removeImportedDataset, setSnapLoading, setSnapPreview,
 } = useStore.getState();
 
@@ -190,6 +191,7 @@ export default function Workspace() {
   const snapRequest = useRef<AbortController | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [showExport, setShowExport] = useState(false);
+  const [showComparison, setShowComparison] = useState(true);
   const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
   const [focusRequest, setFocusRequest] = useState<(SelectedFeature & { nonce: number }) | null>(null);
   const [datasetFitRequest, setDatasetFitRequest] = useState<{ id: string; nonce: number } | null>(null);
@@ -481,8 +483,8 @@ export default function Workspace() {
           </Link>
           <span className="workspace-header-divider" />
           <div className="workspace-context">
-            <strong>{context?.study_area.properties.name || "Kabupaten Kulon Progo"}</strong>
-            <span>Daerah Istimewa Yogyakarta · Evaluasi koridor transit</span>
+            <strong>Pengembangan Feeder YIA 2026</strong>
+            <span>Wates · Evaluasi aksesibilitas rute angkutan umum</span>
           </div>
           <div className="scenario-tabs">
             {scenarios.map((s) => (
@@ -501,24 +503,28 @@ export default function Workspace() {
             <button className="scenario-add" title="Buat skenario baru" aria-label="Buat skenario baru" onClick={() => createScenario()}>
               <Plus size={12} />
             </button>
+            <button className="scenario-add" title="Duplikat skenario aktif" aria-label="Duplikat" onClick={() => duplicateScenario()}>
+              <Copy size={12} />
+            </button>
           </div>
         </div>
         <div className="workspace-meta">
-          <span className="save-state"><i /> Sesi lokal</span>
+          <span className="save-state"><i /> Unsaved</span>
           <span className="divider" />
           <Link href="/#method" className="header-link">Metodologi</Link>
+          <button className="header-link" disabled={!analysis} onClick={() => setShowExport(true)}><FileText size={12} /> Report</button>
           <button className="header-link" disabled={!route} onClick={() => setShowExport(true)}><Download size={12} /> Ekspor</button>
         </div>
       </header>
 
       <aside className="tool-panel">
         <div className="panel-block project-block">
-          <p className="panel-kicker">PROYEK</p>
+          <p className="panel-kicker">PROJECT</p>
           <div className="project-info">
             <RouteIcon size={17} />
-            <h3>Kab. Kulon Progo</h3>
+            <h3>Pengembangan Feeder YIA 2026</h3>
           </div>
-          <span className="project-loc">DIY Yogyakarta</span>
+          <span className="project-loc">Wates · Kab. Kulon Progo</span>
           <div className="route-name-row">
             <input
               className="route-name-input"
@@ -537,11 +543,11 @@ export default function Workspace() {
               <Trash2 size={13} />
             </button>
           </div>
-          <button className="load-demo-btn" onClick={loadDemo}><Play size={12} /> Muat rute contoh Wates</button>
+          <button className="load-demo-btn" onClick={loadDemo}><Play size={12} /> Load Demo Route</button>
         </div>
 
         <div className="panel-block">
-          <p className="panel-kicker">ALAT</p>
+          <p className="panel-kicker">TOOLS</p>
           <div className="tool-stack">
             <div className="tool-row">
               {(["pan", "draw", "edit"] as const).map((tool) => (
@@ -561,10 +567,10 @@ export default function Workspace() {
             </div>
             <div className="tool-row">
               <button className="tool-btn" onClick={() => undo()} disabled={!canUndo()}>
-                <Undo2 size={14} /> Urungkan
+                <Undo2 size={14} /> Undo
               </button>
               <button className="tool-btn" onClick={() => redo()} disabled={!canRedo()}>
-                <Redo2 size={14} /> Ulangi
+                <Redo2 size={14} /> Redo
               </button>
               <button className="tool-btn primary-btn" disabled={!route || loading || Boolean(snapPreview)} onClick={() => analyze()}>
                 {loading ? <LoaderCircle className="spin" size={14} /> : <Play size={14} fill="currentColor" />}
@@ -588,7 +594,7 @@ export default function Workspace() {
         </div>
 
         <div className="panel-block">
-          <div className="panel-label"><Layers3 size={16} /> Layer analisis</div>
+          <div className="panel-label">LAYER</div>
           {(["routes", "population", "property", "facilities", "buffer", "stops", "overlap"] as const).map((layer) => (
             <label key={layer} className="layer-toggle">
               <span><i className={`swatch ${layer}-swatch`} /> {
@@ -597,11 +603,21 @@ export default function Workspace() {
                 layer === "property" ? "Property GO" :
                 layer === "facilities" ? "Fasilitas publik" :
                 layer === "stops" ? "Halte analisis" :
-                layer === "overlap" ? "Segmen overlap" : "Catchment layanan"
+                layer === "overlap" ? "Segmen overlap" : "Buffer layanan"
               }</span>
               <input type="checkbox" checked={layers[layer]} onChange={() => toggleLayer(layer)} />
             </label>
           ))}
+        </div>
+
+        <div className="panel-block">
+          <div className="panel-label">LEGENDA</div>
+          <div className="panel-legend-list">
+            <span><i className="legend-current" /> Current Route</span>
+            {snapPreview && <span><i className="legend-snap-candidate" /> Kandidat jalan</span>}
+            <span><i className="legend-recommended" /> Recommended</span>
+            <span><i className="legend-existing" /> Existing</span>
+          </div>
         </div>
 
         <div className="panel-block dataset-block">
@@ -641,7 +657,11 @@ export default function Workspace() {
         </div>
 
         <div className="panel-block settings-block">
-          <div className="panel-label">METODOLOGI TETAP</div>
+          <div className="panel-label">PENGATURAN ANALISIS</div>
+          <div className="radius-setting">
+            <span>Radius aksesibilitas</span>
+            <b>{context?.methodology.buffer_meters || 500} m</b>
+          </div>
           <div className="methodology-summary">
             <span><b>{context?.methodology.walking_minutes || 10} menit</b> akses halte</span>
             <span><b>{Math.round((context?.methodology.population_weight || 0.5) * 100)}%</b> populasi/km</span>
@@ -807,8 +827,8 @@ export default function Workspace() {
           <div className="result-content">
             <div className="result-heading">
               <div>
-                <p className="panel-kicker">SKOR AKSESIBILITAS</p>
-                <h2>Hasil evaluasi</h2>
+                <p className="panel-kicker">ACCESSIBILITY SCORE</p>
+                <h2>Panel Hasil</h2>
                 <p className="result-method">
                   {analysis.baseline.catchment_method === "network_isochrone"
                     ? `Isochrone jaringan ${analysis.baseline.formula.walking_minutes} menit · PostGIS`
@@ -838,12 +858,12 @@ export default function Workspace() {
               <div className="metric-cell">
                 <div className="metric-label">POPULASI</div>
                 <div className="metric-value">{analysis.baseline.population_covered.toLocaleString("id-ID")}</div>
-                <div className="metric-unit">jiwa terjangkau</div>
+                <div className="metric-unit">residents</div>
               </div>
               <div className="metric-cell">
-                <div className="metric-label">FASILITAS</div>
-                <div className="metric-value">{analysis.baseline.facility_count.toLocaleString("id-ID")}</div>
-                <div className="metric-unit">fasilitas publik</div>
+                <div className="metric-label">PROPERTY</div>
+                <div className="metric-value">{analysis.baseline.property_go_count.toLocaleString("id-ID")}</div>
+                <div className="metric-unit">area terjangkau</div>
               </div>
               <div className="metric-cell">
                 <div className="metric-label">OVERLAP</div>
@@ -856,7 +876,7 @@ export default function Workspace() {
               <div className="metric-cell">
                 <div className="metric-label">PANJANG</div>
                 <div className="metric-value">{analysis.baseline.route_length_km.toLocaleString("id-ID")}</div>
-                <div className="metric-unit">kilometer</div>
+                <div className="metric-unit">estimasi</div>
               </div>
               <div className="metric-cell">
                 <div className="metric-label">POPULASI/KM</div>
@@ -864,9 +884,9 @@ export default function Workspace() {
                 <div className="metric-unit">jiwa per km</div>
               </div>
               <div className="metric-cell">
-                <div className="metric-label">HALTE</div>
-                <div className="metric-value">{analysis.baseline.stop_count}</div>
-                <div className="metric-unit">titik analisis</div>
+                <div className="metric-label">FASILITAS</div>
+                <div className="metric-value">{analysis.baseline.facility_count.toLocaleString("id-ID")}</div>
+                <div className="metric-unit">sekolah + RS</div>
               </div>
             </div>
 
@@ -906,7 +926,7 @@ export default function Workspace() {
               </div>
             )}
 
-            {analysis.recommendation && (
+            {analysis.recommendation && showComparison && (
               <section className="comparison-section">
                 <p className="panel-kicker">PERBANDINGAN RUTE</p>
                 <h3>Baseline vs Rekomendasi</h3>
@@ -946,7 +966,7 @@ export default function Workspace() {
             )}
 
             <section className="ai-card">
-              <div className="ai-title"><span><Sparkles size={16} /></span><div><strong>Insight Perencanaan</strong><small>berdasarkan hasil PostGIS</small></div></div>
+              <div className="ai-title"><span><Sparkles size={16} /></span><div><strong>AI Planning Insight</strong><small>berdasarkan hasil PostGIS</small></div></div>
               {insightLoading && <p className="ai-loading"><LoaderCircle className="spin" size={16} /> Menyusun insight terverifikasi…</p>}
               {insight ? (
                 <div className="ai-content">
@@ -990,7 +1010,10 @@ export default function Workspace() {
             )}
 
             <div className="action-row">
-              <button className="secondary-action" onClick={() => setShowExport(true)}><Download size={14} /> Ekspor hasil</button>
+              <button className="secondary-action" onClick={() => setShowComparison((value) => !value)} disabled={!analysis.recommendation}>
+                <GitCompare size={14} /> Bandingkan Rute
+              </button>
+              <button className="secondary-action" onClick={() => setShowExport(true)}><Download size={14} /> Ekspor Report</button>
             </div>
           </div>
         )}

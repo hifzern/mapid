@@ -200,8 +200,12 @@ test("draws a route and renders verified results", async ({ page }) => {
   await expect(page.getByText(/Rute menjangkau 59.780 warga/)).toBeVisible();
   await expect(page.getByText("Tinjau pergeseran 500 meter ke utara.")).toBeVisible();
   await expect(page.getByText("POPULASI/KM", { exact: true })).toBeVisible();
-  await expect(page.getByText("HALTE", { exact: true })).toBeVisible();
+  await expect(page.getByText("PROPERTY", { exact: true })).toBeVisible();
   await expect(page.getByText("JALAN", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("AI Planning Insight")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Bandingkan Rute/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Duplikat/ })).toBeVisible();
+  await expect(page.getByText("Unsaved")).toBeVisible();
   await expect(page.locator(".result-readiness")).toContainText("belum untuk keputusan publik");
   await expect(page.getByText("pasar 3")).toBeVisible();
   await expect(page.getByText("sekolah 5")).toBeVisible();
@@ -235,7 +239,7 @@ test("flags overlap conflict above the configured threshold", async ({ page }) =
   await page.route("**/api/route-snap", (route) => route.fulfill({ json: snapResult }));
 
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.getByRole("button", { name: "Load Demo Route" }).click();
   await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   await page.getByRole("button", { name: "Evaluasi" }).click();
 
@@ -282,10 +286,10 @@ test("keeps scenarios, export, and map controls functional", async ({ page }) =>
   await page.goto("/workspace");
 
   await expect(page.getByRole("button", { name: "Rute Simulasi A" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Sesi lokal")).toBeVisible();
+  await expect(page.getByText("Unsaved")).toBeVisible();
   await expect(page.getByRole("link", { name: "Metodologi" })).toHaveAttribute("href", "/#method");
 
-  await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.getByRole("button", { name: "Load Demo Route" }).click();
   await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   await expect(page.getByRole("button", { name: "Ekspor" })).toBeEnabled();
   await page.getByRole("button", { name: "Buat skenario baru" }).click();
@@ -307,7 +311,7 @@ test("keeps scenarios, export, and map controls functional", async ({ page }) =>
 test("persists editable workspace state but not imported overlays", async ({ page }) => {
   await mockContext(page);
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.getByRole("button", { name: "Load Demo Route" }).click();
   await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   await page.locator(".route-name-input").fill("Koridor Wates tersimpan");
   await page.getByRole("checkbox", { name: "Kepadatan penduduk" }).uncheck();
@@ -419,7 +423,7 @@ test("previews a snapped route before apply and keeps it as one undo step", asyn
   });
 
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.getByRole("button", { name: "Load Demo Route" }).click();
   await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   const routePath = page.locator("path.proposed-route").first();
   const originalPath = await routePath.getAttribute("d");
@@ -449,7 +453,7 @@ test("previews a snapped route before apply and keeps it as one undo step", asyn
   await expect(page.locator(".score-ring-ws")).toHaveCount(0);
   await expect.poll(() => routePath.getAttribute("d")).not.toBe(originalPath);
 
-  await page.getByRole("button", { name: "Urungkan" }).click();
+  await page.getByRole("button", { name: "Undo" }).click();
   await expect.poll(() => routePath.getAttribute("d")).toBe(originalPath);
   await page.getByRole("button", { name: "Ikuti jalan" }).click();
   await expect(page.getByText("Routing jalan sedang tidak tersedia.")).toBeVisible();
@@ -489,7 +493,7 @@ test("reports deployment readiness without exposing credentials", async ({ reque
 test("drags the complete route without changing its shape", async ({ page }) => {
   await mockContext(page);
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.getByRole("button", { name: "Load Demo Route" }).click();
   await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
 
   const route = page.locator("path.route-draggable").first();
@@ -519,21 +523,21 @@ test("drags the complete route without changing its shape", async ({ page }) => 
   expect(moved.width).toBeCloseTo(before.width, 0);
   expect(moved.height).toBeCloseTo(before.height, 0);
 
-  await page.getByRole("button", { name: "Urungkan" }).click();
+  await page.getByRole("button", { name: "Undo" }).click();
   await expect.poll(async () => (await route.boundingBox())!.x).toBeCloseTo(before.x, 0);
 
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(start.x + 2, start.y + 2);
   await page.mouse.up();
-  await page.getByRole("button", { name: "Urungkan" }).click();
+  await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.locator("path.route-draggable")).toHaveCount(0);
 });
 
 test("edits vertices and inserts a midpoint without enabling whole-route drag", async ({ page }) => {
   await mockContext(page);
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.getByRole("button", { name: "Load Demo Route" }).click();
   await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   const route = page.locator("path.proposed-route").first();
   const originalPath = await route.getAttribute("d");
@@ -564,7 +568,7 @@ test("edits vertices and inserts a midpoint without enabling whole-route drag", 
   await page.mouse.up();
   await expect(page.getByText("7 titik", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Urungkan" }).click();
+  await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.getByText("6 titik", { exact: true })).toBeVisible();
   await expect.poll(() => route.getAttribute("d")).toBe(reshapedPath);
 });
@@ -572,7 +576,7 @@ test("edits vertices and inserts a midpoint without enabling whole-route drag", 
 test("uses a larger whole-route drag threshold for touch", async ({ page }) => {
   await mockContext(page);
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.getByRole("button", { name: "Load Demo Route" }).click();
   await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   const route = page.locator("path.route-draggable").first();
   const originalPath = await route.getAttribute("d");
@@ -608,7 +612,7 @@ test("shows loading error and allows retry", async ({ page }) => {
   await page.route("**/api/insight", (route) => route.fulfill({ json: { summary: "Ringkasan.", actions: [], source: "template" } }));
 
   await page.goto("/workspace");
-  await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.getByRole("button", { name: "Load Demo Route" }).click();
   await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   const evaluate = page.getByRole("button", { name: "Evaluasi" });
   await evaluate.click();
@@ -680,7 +684,7 @@ test("landing and workspace remain usable on mobile", async ({ page }) => {
   await expect(map).toBeVisible({ timeout: 15_000 });
   const evaluate = page.getByRole("button", { name: "Evaluasi" });
   await expect(evaluate).toBeDisabled();
-  await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.getByRole("button", { name: "Load Demo Route" }).click();
   await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   await expect(evaluate).toBeEnabled();
   await expect(page.locator(".map-notice")).toContainText("5.000 objek per layer");
