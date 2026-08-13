@@ -608,20 +608,21 @@ test("shows loading error and allows retry", async ({ page }) => {
   await expect(page.locator(".score-ring-ws strong")).toHaveText("86");
 });
 
-test("landing follows the reference flow and opens the dashboard", async ({ page }) => {
+test("landing follows the reference flow and opens the workspace", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Temukan Rute yang Tepat untuk Setiap Wilayah", level: 1 })).toBeVisible();
-  await expect(page.getByRole("navigation").getByRole("link", { name: "Cara kerja" })).toHaveAttribute("href", "#how");
-  await expect(page.getByRole("navigation").getByRole("link", { name: "Workspace", exact: true })).toHaveAttribute("href", "/dashboard");
-  await expect(page.getByRole("heading", { name: "Uji Ide Rute Secara Bertahap" })).toBeVisible();
-  await expect(page.locator(".how-connector")).toBeVisible();
-  await expect(page.locator(".data-pale-card")).toHaveCount(4);
-  await expect(page.getByText("Dirancang digunakan untuk")).toBeVisible();
-  await expect(page.locator("footer").getByRole("link", { name: "Masuk" })).toHaveAttribute("href", "/masuk");
+  await expect(page.getByRole("navigation", { name: "Navigasi utama" }).getByRole("link", { name: "Cara Kerja" })).toHaveAttribute("href", "#cara-kerja");
+  await expect(page.getByRole("navigation", { name: "Navigasi utama" }).getByRole("link", { name: "Demo" })).toHaveAttribute("href", "#demo");
+  await expect(page.getByRole("navigation", { name: "Navigasi utama" }).getByRole("link", { name: "Metodologi" })).toHaveAttribute("href", "#metodologi");
+  await expect(page.getByRole("navigation", { name: "Navigasi utama" }).getByRole("link", { name: "Workspace", exact: true })).toHaveAttribute("href", "/workspace");
+  await expect(page.getByRole("heading", { name: "Dirancang digunakan untuk" })).toBeVisible();
+  await expect(page.locator(".tr-product-film")).toBeVisible();
 
   await page.getByRole("link", { name: /Coba Demo/ }).click();
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
-  await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
+  await expect(page).toHaveURL(/#cara-kerja/, { timeout: 15_000 });
+
+  await page.getByRole("link", { name: "Workspace", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/workspace/, { timeout: 15_000 });
 });
 
 test("dashboard renders and opens the workspace", async ({ page }) => {
@@ -656,14 +657,12 @@ test("landing and workspace remain usable on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Temukan Rute yang Tepat untuk Setiap Wilayah" })).toBeVisible();
-  await expect(page.locator("footer").getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/dashboard");
+  await expect(page.locator("footer").getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/workspace");
   await mockContext(page, {
     ...context,
     truncated: { ...context.truncated, population: true },
   });
   await page.locator("footer").getByRole("link", { name: "Workspace" }).click();
-  await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
-  await page.getByRole("link", { name: /Buka Workspace/ }).click();
 
   const map = page.locator(".leaflet-map");
   await expect(map).toBeVisible({ timeout: 15_000 });
