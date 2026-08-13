@@ -182,10 +182,13 @@ test("draws a route and renders verified results", async ({ page }) => {
 
   await page.getByRole("button", { name: /Gambar/ }).click();
   const map = page.locator(".leaflet-map");
-  await map.click({ position: { x: 240, y: 260 } });
-  await map.dblclick({ position: { x: 430, y: 190 } });
+  await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
+  const mapBox = await map.boundingBox();
+  expect(mapBox).not.toBeNull();
+  await map.click({ position: { x: mapBox!.width * 0.35, y: mapBox!.height * 0.4 } });
+  await map.dblclick({ position: { x: mapBox!.width * 0.65, y: mapBox!.height * 0.3 } });
   const roadPreview = page.getByRole("region", { name: "Preview ikuti jalan" });
-  await expect(roadPreview).toBeVisible();
+  await expect(roadPreview).toBeVisible({ timeout: 15_000 });
   await roadPreview.getByRole("button", { name: "Terapkan" }).click();
   await expect(evaluate).toBeEnabled();
   await evaluate.click();
@@ -232,6 +235,7 @@ test("flags overlap conflict above the configured threshold", async ({ page }) =
 
   await page.goto("/workspace");
   await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   await page.getByRole("button", { name: "Evaluasi" }).click();
 
   await expect(page.locator(".conflict-badge")).toHaveText("Konflik >30%");
@@ -281,6 +285,7 @@ test("keeps scenarios, export, and map controls functional", async ({ page }) =>
   await expect(page.getByRole("link", { name: "Metodologi" })).toHaveAttribute("href", "/#method");
 
   await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   await expect(page.getByRole("button", { name: "Ekspor" })).toBeEnabled();
   await page.getByRole("button", { name: "Buat skenario baru" }).click();
   await expect(page.locator(".scenario-tab")).toHaveCount(2);
@@ -302,6 +307,7 @@ test("persists editable workspace state but not imported overlays", async ({ pag
   await mockContext(page);
   await page.goto("/workspace");
   await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   await page.locator(".route-name-input").fill("Koridor Wates tersimpan");
   await page.getByRole("checkbox", { name: "Kepadatan penduduk" }).uncheck();
 
@@ -413,6 +419,7 @@ test("previews a snapped route before apply and keeps it as one undo step", asyn
 
   await page.goto("/workspace");
   await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   const routePath = page.locator("path.proposed-route").first();
   const originalPath = await routePath.getAttribute("d");
   await page.getByRole("button", { name: "Evaluasi" }).click();
@@ -482,6 +489,7 @@ test("drags the complete route without changing its shape", async ({ page }) => 
   await mockContext(page);
   await page.goto("/workspace");
   await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
 
   const route = page.locator("path.route-draggable").first();
   await expect(route).toBeVisible();
@@ -525,6 +533,7 @@ test("edits vertices and inserts a midpoint without enabling whole-route drag", 
   await mockContext(page);
   await page.goto("/workspace");
   await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   const route = page.locator("path.proposed-route").first();
   const originalPath = await route.getAttribute("d");
 
@@ -563,6 +572,7 @@ test("uses a larger whole-route drag threshold for touch", async ({ page }) => {
   await mockContext(page);
   await page.goto("/workspace");
   await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   const route = page.locator("path.route-draggable").first();
   const originalPath = await route.getAttribute("d");
   const start = await routeScreenPoint(route);
@@ -598,6 +608,7 @@ test("shows loading error and allows retry", async ({ page }) => {
 
   await page.goto("/workspace");
   await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   const evaluate = page.getByRole("button", { name: "Evaluasi" });
   await evaluate.click();
   await expect(page.getByText("Menganalisis konteks rute…")).toBeVisible();
@@ -669,6 +680,7 @@ test("landing and workspace remain usable on mobile", async ({ page }) => {
   const evaluate = page.getByRole("button", { name: "Evaluasi" });
   await expect(evaluate).toBeDisabled();
   await page.getByRole("button", { name: "Muat rute contoh Wates" }).click();
+  await page.waitForSelector(".leaflet-zoom-anim", { state: "detached", timeout: 10_000 });
   await expect(evaluate).toBeEnabled();
   await expect(page.locator(".map-notice")).toContainText("5.000 objek per layer");
   await expect(page.locator(".readiness-badge")).toHaveText("Provisional");
