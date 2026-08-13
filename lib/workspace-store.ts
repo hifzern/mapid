@@ -32,7 +32,7 @@ export type Store = {
   mapNotice: string;
   loading: boolean;
   insightLoading: boolean;
-  layers: { routes: boolean; population: boolean; property: boolean; facilities: boolean; buffer: boolean };
+  layers: { routes: boolean; population: boolean; property: boolean; facilities: boolean; buffer: boolean; stops: boolean; overlap: boolean };
   scenarios: Scenario[];
   activeScenarioId: string;
   toasts: Toast[];
@@ -87,7 +87,15 @@ function createScenario(name = "Rute Simulasi A"): Scenario {
 }
 
 const defaultScenarios: Scenario[] = [createScenario()];
-const defaultLayers: Store["layers"] = { routes: true, population: true, property: true, facilities: true, buffer: true };
+const defaultLayers: Store["layers"] = {
+  routes: true,
+  population: true,
+  property: true,
+  facilities: true,
+  buffer: true,
+  stops: true,
+  overlap: true,
+};
 
 function routeMetrics(route: LineString | null) {
   if (!route) return { pointCount: 0, routeLengthKm: 0 };
