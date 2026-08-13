@@ -476,8 +476,8 @@ export default function Workspace() {
         <div className="workspace-title">
           <Link href="/" className="workspace-back" aria-label="Kembali ke beranda"><ArrowLeft size={18} /></Link>
           <Link href="/" className="workspace-brand" aria-label="Transight">
-            <Image className="workspace-brand-wordmark" src="/brand/transight-wordmark.png" alt="Transight" width={626} height={182} priority />
-            <Image className="workspace-brand-icon" src="/brand/transight-icon.png" alt="" width={251} height={250} priority />
+            <Image className="workspace-brand-wordmark" src="/dashboard/logo-dark.png" alt="Transight" width={626} height={182} priority />
+            <Image className="workspace-brand-icon" src="/dashboard/logo-icon.png" alt="" width={251} height={250} priority />
           </Link>
           <span className="workspace-header-divider" />
           <div className="workspace-context">
@@ -763,7 +763,7 @@ export default function Workspace() {
       <aside className="result-panel">
         {!analysis && !loading && routeState !== "analyzing" && (
           <div className="empty-result">
-            <div className="empty-icon"><Image src="/brand/transight-icon.png" alt="" width={251} height={250} /></div>
+            <div className="empty-icon"><Image src="/dashboard/logo-icon.png" alt="" width={251} height={250} /></div>
             <p className="panel-kicker">HASIL EVALUASI</p>
             <h2>Belum ada rute yang dinilai.</h2>
             <p>Gambar sebuah garis di peta, lalu pilih <b>Evaluasi rute</b> untuk melihat skor dan alternatif.</p>

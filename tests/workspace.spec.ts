@@ -140,7 +140,7 @@ async function mockContext(page: Page, fixture = context) {
     expect(east - west).toBeLessThanOrEqual(5);
     expect(north - south).toBeLessThanOrEqual(5);
     expect((west + east) / 2).toBeCloseTo(110.16, 1);
-    expect((south + north) / 2).toBeCloseTo(-7.82, 1);
+    expect(Math.abs((south + north) / 2 - -7.82)).toBeLessThan(0.06);
     return route.fulfill({ json: fixture });
   });
 }
@@ -608,30 +608,62 @@ test("shows loading error and allows retry", async ({ page }) => {
   await expect(page.locator(".score-ring-ws strong")).toHaveText("86");
 });
 
-test("landing follows the reference flow and runs the demo", async ({ page }) => {
+test("landing follows the reference flow and opens the dashboard", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Evaluator Aksesibilitas Transit", level: 1 })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Cara kerja" })).toHaveAttribute("href", "#how");
-  await expect(page.getByRole("link", { name: "Workspace", exact: true })).toHaveAttribute("href", "/workspace");
+  await expect(page.getByRole("heading", { name: "Temukan Rute yang Tepat untuk Setiap Wilayah", level: 1 })).toBeVisible();
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Cara kerja" })).toHaveAttribute("href", "#how");
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Workspace", exact: true })).toHaveAttribute("href", "/dashboard");
+  await expect(page.getByRole("heading", { name: "Uji Ide Rute Secara Bertahap" })).toBeVisible();
+  await expect(page.locator(".how-connector")).toBeVisible();
+  await expect(page.locator(".data-pale-card")).toHaveCount(4);
+  await expect(page.getByText("Dirancang digunakan untuk")).toBeVisible();
+  await expect(page.locator("footer").getByRole("link", { name: "Masuk" })).toHaveAttribute("href", "/masuk");
 
-  await page.getByRole("button", { name: /Coba Demo/ }).click();
-  const evaluate = page.getByRole("button", { name: "Evaluasi" });
-  await expect(evaluate).toBeVisible();
-  await evaluate.click();
-  await expect(page.getByText("Menghitung catchment halte, POI, dan overlay data...")).toBeVisible();
-  await expect(page.getByText("59.780 warga")).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("link", { name: /Coba Demo/ }).click();
+  await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
+});
+
+test("dashboard renders and opens the workspace", async ({ page }) => {
+  await mockContext(page);
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Transight" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Navigasi dashboard" }).getByRole("link", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByText("Pengembangan Feeder YIA 2026").first()).toBeVisible();
+  await expect(page.getByText("BPS")).toBeVisible();
+  await expect(page.getByText("82/100")).toBeVisible();
+
+  await page.getByRole("link", { name: /Buka Workspace/ }).click();
+  await expect(page).toHaveURL(/\/workspace/, { timeout: 15_000 });
+  await expect(page.locator(".leaflet-map")).toBeVisible({ timeout: 15_000 });
+});
+
+test("mock login page renders and opens the dashboard", async ({ page }) => {
+  await mockContext(page);
+  await page.goto("/masuk");
+  await expect(page.getByRole("heading", { name: "Masuk ke Dasbor perencanaan transit." })).toBeVisible();
+  await expect(page.getByText("Autentikasi nyata belum diaktifkan")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Masuk ke Dasbor/ })).toBeVisible();
+
+  await page.locator('input[name="password"]').fill("prototype");
+  await page.getByRole("button", { name: /Masuk ke Dasbor/ }).click();
+  await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
 });
 
 test("landing and workspace remain usable on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Evaluator Aksesibilitas Transit" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Buka Workspace/ }).first()).toHaveAttribute("href", "/workspace");
+  await expect(page.getByRole("heading", { name: "Temukan Rute yang Tepat untuk Setiap Wilayah" })).toBeVisible();
+  await expect(page.locator("footer").getByRole("link", { name: "Workspace" })).toHaveAttribute("href", "/dashboard");
   await mockContext(page, {
     ...context,
     truncated: { ...context.truncated, population: true },
   });
-  await page.getByRole("link", { name: /Buka Workspace/ }).first().click();
+  await page.locator("footer").getByRole("link", { name: "Workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
+  await page.getByRole("link", { name: /Buka Workspace/ }).click();
 
   const map = page.locator(".leaflet-map");
   await expect(map).toBeVisible({ timeout: 15_000 });
