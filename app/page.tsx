@@ -44,7 +44,15 @@ export default function LandingPage() {
 
       <section id="metodologi" className="tr-audience-section">
         <div className="tr-shell">
-          <div id="demo" className="tr-product-film"><span>Gif</span></div>
+          <div id="demo" className="tr-product-film">
+            <Image
+              src="/landing/product-demo.gif"
+              alt="Alur simulasi koridor transit dari menggambar rute sampai rekomendasi"
+              width={1000}
+              height={528}
+              unoptimized
+            />
+          </div>
           <h2>Dirancang digunakan untuk</h2>
           <div className="tr-audience-grid">
             {audiences.map(({ icon: Icon, title, body }, index) => (

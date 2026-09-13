@@ -1,12 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 const steps = [
-  { side: "left", gif: false },
-  { side: "right", gif: false },
-  { side: "left", gif: true },
-  { side: "right", gif: true },
+  { side: "left", gif: "/landing/step-1.gif", alt: "Mengaktifkan layer analisis di workspace" },
+  { side: "right", gif: "/landing/step-2.gif", alt: "Menggambar rute dan mencocokkannya ke jaringan jalan" },
+  { side: "left", gif: "/landing/step-3.gif", alt: "Menghitung skor aksesibilitas dan membaca hasil evaluasi" },
+  { side: "right", gif: "/landing/step-4.gif", alt: "Membandingkan baseline dengan rute rekomendasi" },
 ] as const;
 
 export default function RouteJourney() {
@@ -117,7 +118,9 @@ export default function RouteJourney() {
       <div className="tr-steps">
         {steps.map((step, index) => (
           <article key={index} className={`tr-step tr-step-${step.side}`}>
-            <div className="tr-media-placeholder">{step.gif ? "Gif" : null}</div>
+            <div className="tr-media-placeholder">
+              <Image src={step.gif} alt={step.alt} width={589} height={315} unoptimized priority={index < 2} />
+            </div>
             <div className="tr-step-copy">
               <h3>Uji Ide Rute<br />Secara Bertahap</h3>
               <p>Evaluasi ide koridor transportasi publik di Kabupaten Kulon Progo dengan konteks spasial, metrik transparan, dan rekomendasi yang dapat ditelusuri.</p>
