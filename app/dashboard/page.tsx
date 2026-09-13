@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   Plus,
@@ -20,22 +21,22 @@ import {
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, active: true },
-  { label: "Projects", href: "#", icon: FolderKanban },
+  { label: "Projects", href: "#projects", icon: FolderKanban },
   { label: "Workspace", href: "/workspace", icon: MapPin },
-  { label: "Data Sources", href: "#", icon: Layers },
-  { label: "Reports", href: "#", icon: FileText },
+  { label: "Data Sources", href: "#data-sources", icon: Layers },
+  { label: "Reports", href: "/workspace", icon: FileText },
 ];
 
 const settingItems = [
-  { label: "Settings", href: "#", icon: Settings },
-  { label: "Help & Support", href: "#", icon: HelpCircle },
+  { label: "Settings", href: "#settings", icon: Settings },
+  { label: "Help & Support", href: "/#faq", icon: HelpCircle },
 ];
 
 const activities = [
-  { title: "Skenario “Pengasih → YIA” dievaluasi", time: "2j" },
-  { title: "Project Feeder YIA diperbarui", time: "4j" },
-  { title: "Data POI diperbarui", time: "1h" },
-  { title: "Skenario baru dibuat", time: "2h" },
+  { title: "Skenario “Pengasih → YIA” dievaluasi", time: "2j", href: "/workspace" },
+  { title: "Project Feeder YIA diperbarui", time: "4j", href: "/workspace" },
+  { title: "Data POI diperbarui", time: "1h", href: "/workspace" },
+  { title: "Skenario baru dibuat", time: "2h", href: "/workspace" },
 ];
 
 const sources = [
@@ -46,6 +47,7 @@ const sources = [
 ];
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [scenarioOpen, setScenarioOpen] = useState(true);
   const [secondProjectOpen, setSecondProjectOpen] = useState(false);
 
@@ -80,10 +82,10 @@ export default function DashboardPage() {
           {settingItems.map((item) => {
             const IconComp = item.icon;
             return (
-              <a key={item.label} href={item.href} className="dash-nav-item">
+              <Link key={item.label} href={item.href} className="dash-nav-item">
                 <IconComp size={18} className="dash-nav-icon" />
                 <span>{item.label}</span>
-              </a>
+              </Link>
             );
           })}
         </nav>
@@ -106,7 +108,11 @@ export default function DashboardPage() {
             <h1 className="dash-h1">Dashboard</h1>
             <p className="dash-sub">Ringkasan project dan aktivitas perencanaan transportasi Anda.</p>
           </div>
-          <button type="button" className="dash-new-project">
+          <button
+            type="button"
+            className="dash-new-project"
+            onClick={() => router.push("/workspace")}
+          >
             <Plus size={16} /> Buat Project Baru
           </button>
         </header>
@@ -118,7 +124,7 @@ export default function DashboardPage() {
             <span className="dash-stat-value">9</span>
             <span className="dash-stat-note">6 sudah dievaluasi</span>
           </div>
-          <div className="dash-stat-card">
+          <div className="dash-stat-card" id="data-sources">
             <span className="dash-stat-label">Sumber Data Aktif</span>
             <span className="dash-stat-value">4</span>
             <span className="dash-stat-note">Terakhir diperbarui: 20 Mei 2026</span>
@@ -126,12 +132,12 @@ export default function DashboardPage() {
         </div>
 
         {/* 2-Column Grid */}
-        <div className="dash-grid">
+        <div className="dash-grid" id="projects">
           {/* Left Column: Project Terbaru */}
           <section className="dash-panel">
             <div className="dash-panel-head">
               <h2>Project Terbaru</h2>
-              <a href="#" className="dash-link">Lihat semua</a>
+              <Link href="/workspace" className="dash-link">Lihat semua</Link>
             </div>
 
             <div className="dash-project-list">
@@ -159,7 +165,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Skenario 1: Wates -> YIA */}
-                    <div className="dash-scenario-item">
+                    <Link href="/workspace" className="dash-scenario-item">
                       <div className="dash-scenario-info">
                         <strong>Wates → YIA</strong>
                         <span className="dash-scenario-tag">Sudah dievaluasi</span>
@@ -171,10 +177,10 @@ export default function DashboardPage() {
                         </span>
                         <ArrowRight size={15} className="dash-scenario-arrow" />
                       </div>
-                    </div>
+                    </Link>
 
                     {/* Skenario 2: Pengasih -> YIA (Recommended) */}
-                    <div className="dash-scenario-item dash-scenario-recommended-item">
+                    <Link href="/workspace" className="dash-scenario-item dash-scenario-recommended-item">
                       <div className="dash-scenario-info">
                         <div className="dash-scenario-title-row">
                           <strong>Pengasih → YIA</strong>
@@ -191,10 +197,10 @@ export default function DashboardPage() {
                         </span>
                         <ArrowRight size={15} className="dash-scenario-arrow" />
                       </div>
-                    </div>
+                    </Link>
 
                     {/* Skenario 3: Sentolo -> YIA (Belum dinilai) */}
-                    <div className="dash-scenario-item dash-scenario-unrated">
+                    <Link href="/workspace" className="dash-scenario-item dash-scenario-unrated">
                       <div className="dash-scenario-info">
                         <strong>Sentolo → YIA</strong>
                         <span className="dash-scenario-tag">Belum dievaluasi</span>
@@ -203,11 +209,11 @@ export default function DashboardPage() {
                         <span className="dash-scenario-unrated-text">Belum dinilai</span>
                         <ArrowRight size={15} className="dash-scenario-arrow" />
                       </div>
-                    </div>
+                    </Link>
 
-                    <button type="button" className="dash-add-scenario-btn">
+                    <Link href="/workspace" className="dash-add-scenario-btn">
                       <Plus size={14} /> Buat Skenario Baru
-                    </button>
+                    </Link>
                   </div>
                 )}
               </article>
@@ -228,6 +234,39 @@ export default function DashboardPage() {
                     {secondProjectOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </div>
                 </div>
+
+                {secondProjectOpen && (
+                  <div className="dash-scenarios-accordion">
+                    <div className="dash-scenarios-kicker">
+                      <span>SKENARIO SENTOLO – WATES</span>
+                    </div>
+
+                    <Link href="/workspace" className="dash-scenario-item">
+                      <div className="dash-scenario-info">
+                        <strong>Sentolo → Wates (Koridor Utama)</strong>
+                        <span className="dash-scenario-tag">Sudah dievaluasi</span>
+                      </div>
+                      <div className="dash-scenario-score-wrap">
+                        <span className="dash-scenario-score">
+                          <strong>76</strong>
+                          <small>/100</small>
+                        </span>
+                        <ArrowRight size={15} className="dash-scenario-arrow" />
+                      </div>
+                    </Link>
+
+                    <Link href="/workspace" className="dash-scenario-item dash-scenario-unrated">
+                      <div className="dash-scenario-info">
+                        <strong>Sentolo → Nanggulan (Feeder)</strong>
+                        <span className="dash-scenario-tag">Belum dievaluasi</span>
+                      </div>
+                      <div className="dash-scenario-score-wrap">
+                        <span className="dash-scenario-unrated-text">Belum dinilai</span>
+                        <ArrowRight size={15} className="dash-scenario-arrow" />
+                      </div>
+                    </Link>
+                  </div>
+                )}
               </article>
             </div>
           </section>
@@ -242,15 +281,15 @@ export default function DashboardPage() {
 
               <div className="dash-activity-list">
                 {activities.map((act, i) => (
-                  <div key={i} className="dash-activity-item">
+                  <Link key={i} href={act.href} className="dash-activity-item">
                     <div className="dash-activity-bullet" />
                     <span className="dash-activity-text">{act.title}</span>
                     <span className="dash-activity-time">{act.time}</span>
-                  </div>
+                  </Link>
                 ))}
-                <a href="#" className="dash-activity-link">
+                <Link href="/workspace" className="dash-activity-link">
                   Lihat semua aktivitas <ArrowRight size={14} />
-                </a>
+                </Link>
               </div>
             </section>
 
@@ -258,18 +297,18 @@ export default function DashboardPage() {
             <section className="dash-panel">
               <div className="dash-panel-head">
                 <h2>Sumber Data Aktif</h2>
-                <a href="#" className="dash-link">Kelola</a>
+                <Link href="/workspace" className="dash-link">Kelola</Link>
               </div>
 
               <div className="dash-source-grid">
                 {sources.map((source) => (
-                  <div key={source.name} className="dash-source-box">
+                  <Link key={source.name} href="/workspace" className="dash-source-box">
                     <span className="dash-source-dot" />
                     <div className="dash-source-box-meta">
                       <strong>{source.name}</strong>
                       <span>{source.meta}</span>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
               <div className="dash-source-footer">

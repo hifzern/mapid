@@ -4,9 +4,10 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowLeft,
   Check,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   CircleAlert,
   LoaderCircle,
   Play,
@@ -28,6 +29,8 @@ import {
   Building2,
   Clock,
   MapPin,
+  Layers,
+  LogOut,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DragEvent } from "react";
@@ -196,7 +199,9 @@ export default function Workspace() {
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [activeTab, setActiveTab] = useState<"peta" | "perbandingan" | "hasil" | "laporan">("peta");
-  const [reportSubTab, setReportSubTab] = useState<"property" | "halte">("property");
+  const [sidebarMode, setSidebarMode] = useState<"layer" | "rute" | "halte">("layer");
+  const [reportSubTab, setReportSubTab] = useState<"property" | "halte" | "layer">("property");
+  const [floatingScenarioOpen, setFloatingScenarioOpen] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
   const [focusRequest, setFocusRequest] = useState<(SelectedFeature & { nonce: number }) | null>(null);
   const [datasetFitRequest, setDatasetFitRequest] = useState<{ id: string; nonce: number } | null>(null);
@@ -501,21 +506,30 @@ export default function Workspace() {
       <ToastContainer />
 
       <header className="ws2-header">
-        <div className="ws2-breadcrumb">
-          <Link href="/" className="workspace-back" aria-label="Kembali ke beranda"><ArrowLeft size={16} /></Link>
-          <span className="ws2-crumb-main">Transight</span><i>›</i>
-          <Link href="/dashboard">Projects</Link><i>›</i>
-          <span>Pengembangan Feeder YIA 2026</span><i>›</i>
-          <strong className="ws2-crumb-active">Skenario {activeScenario.name}</strong>
+        <div className="ws2-header-left">
+          <Link href="/" className="ws2-logo" aria-label="Transight - Kembali ke beranda">
+            <Image src="/dashboard/logo-icon.png" alt="" width={28} height={28} className="ws2-logo-icon" />
+            <Image src="/dashboard/logo-dark.png" alt="Transight" width={110} height={26} className="ws2-logo-word" />
+          </Link>
+          <div className="ws2-header-divider" />
+          <div className="ws2-breadcrumb">
+            <Link href="/" className="ws2-crumb-main">Transight</Link><i>›</i>
+            <Link href="/dashboard">Projects</Link><i>›</i>
+            <Link href="/dashboard" className="ws2-crumb-project">Pengembangan Feeder YIA 2026</Link><i>›</i>
+            <strong className="ws2-crumb-active">Skenario {activeScenario.name}</strong>
+          </div>
         </div>
         <div className="ws2-header-actions">
           <span className="save-state"><i /> Unsaved</span>
           <Link href="/#method" className="header-link">Metodologi</Link>
-          <button className="header-link" disabled={!analysis} onClick={() => setShowExport(true)}><FileText size={12} /> Report</button>
+          <button className="header-link" onClick={() => setActiveTab("laporan")}><FileText size={12} /> Report</button>
           <button className="header-link" disabled={!route} onClick={() => setShowExport(true)}><Download size={12} /> Ekspor</button>
           <button className="ws2-save-btn" onClick={() => { saveCurrentToScenario(); addToast("Skenario tersimpan", "success"); }}>
             <Check size={12} /> Simpan
           </button>
+          <Link href="/dashboard" className="ws2-exit-btn" title="Keluar dari Workspace" aria-label="Keluar">
+            <LogOut size={16} />
+          </Link>
         </div>
       </header>
 
@@ -534,27 +548,70 @@ export default function Workspace() {
 
       <div className="ws2-body">
         <aside className="ws2-sidebar">
-          {activeTab === "laporan" ? (
-            <div className="panel-block">
-              <p className="panel-kicker">SUBVIEW LAPORAN</p>
-              <div className="ws2-report-switcher">
+          {/* Vertical Tabs Descending directly under Logo (Figma Frame 33) */}
+          <div className="ws2-sidebar-nav-vertical">
+            {activeTab === "laporan" ? (
+              <>
                 <button
                   type="button"
-                  className={`ws2-report-tab-btn${reportSubTab === "property" ? " active" : ""}`}
+                  className={`ws2-side-nav-btn-vertical${reportSubTab === "property" ? " active" : ""}`}
                   onClick={() => setReportSubTab("property")}
                 >
-                  <MapPin size={13} /> Property
+                  <MapPin size={16} />
+                  <span>Property</span>
                 </button>
                 <button
                   type="button"
-                  className={`ws2-report-tab-btn${reportSubTab === "halte" ? " active" : ""}`}
+                  className={`ws2-side-nav-btn-vertical${reportSubTab === "halte" ? " active" : ""}`}
                   onClick={() => setReportSubTab("halte")}
                 >
-                  <RouteIcon size={13} /> Halte
+                  <RouteIcon size={16} />
+                  <span>Halte</span>
                 </button>
-              </div>
+                <button
+                  type="button"
+                  className={`ws2-side-nav-btn-vertical${reportSubTab === "layer" ? " active" : ""}`}
+                  onClick={() => setReportSubTab("layer")}
+                >
+                  <Layers size={16} />
+                  <span>Layer</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={`ws2-side-nav-btn-vertical${sidebarMode === "rute" ? " active" : ""}`}
+                  onClick={() => setSidebarMode("rute")}
+                >
+                  <RouteIcon size={16} />
+                  <span>Rute</span>
+                </button>
+                <button
+                  type="button"
+                  className={`ws2-side-nav-btn-vertical${sidebarMode === "halte" ? " active" : ""}`}
+                  onClick={() => setSidebarMode("halte")}
+                >
+                  <MapPin size={16} />
+                  <span>Halte</span>
+                </button>
+                <button
+                  type="button"
+                  className={`ws2-side-nav-btn-vertical${sidebarMode === "layer" ? " active" : ""}`}
+                  onClick={() => setSidebarMode("layer")}
+                >
+                  <Layers size={16} />
+                  <span>Layer</span>
+                </button>
+              </>
+            )}
+          </div>
 
-              {reportSubTab === "property" ? (
+          <div className="ws2-sidebar-divider" />
+
+          {activeTab === "laporan" ? (
+            <div className="panel-block">
+              {reportSubTab === "property" && (
                 <div className="ws2-report-sidebar-list">
                   <p className="ws2-sidebar-subhead">Daftar Property Terjangkau</p>
                   {propertyList.map((item, i) => {
@@ -570,7 +627,9 @@ export default function Workspace() {
                     );
                   })}
                 </div>
-              ) : (
+              )}
+
+              {reportSubTab === "halte" && (
                 <div className="ws2-report-sidebar-list">
                   <p className="ws2-sidebar-subhead">Daftar Halte Koridor</p>
                   {stopsList.map((item, i) => (
@@ -584,120 +643,190 @@ export default function Workspace() {
                   ))}
                 </div>
               )}
+
+              {reportSubTab === "layer" && (
+                <div className="panel-block">
+                  <p className="panel-kicker">LAYER SPASIAL</p>
+                  {([
+                    { key: "routes", label: "Rute Eksisting" },
+                    { key: "population", label: "Kepadatan Penduduk" },
+                    { key: "facilities", label: "Fasilitas Publik" },
+                    { key: "property", label: "Property Go" },
+                  ] as const).map(({ key, label }) => (
+                    <label key={key} className="layer-toggle ws2-layer-row">
+                      <span><i className={`swatch ${key}-swatch`} /> {label}</span>
+                      <div className="ws2-layer-ctrls">
+                        <span className="ws2-kebab">⋮</span>
+                        <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <>
-              <div className="panel-block">
-                <p className="panel-kicker">LAYER</p>
-                {([
-                  { key: "routes", label: "Rute Eksisting" },
-                  { key: "population", label: "Kepadatan Penduduk" },
-                  { key: "facilities", label: "Fasilitas Publik" },
-                  { key: "property", label: "Property Go" },
-                ] as const).map(({ key, label }) => (
-                  <label key={key} className="layer-toggle ws2-layer-row">
-                    <span><i className={`swatch ${key}-swatch`} /> {label}</span>
-                    <div className="ws2-layer-ctrls">
+              {sidebarMode === "layer" && (
+                <>
+                  <div className="panel-block">
+                    <p className="panel-kicker">LAYER SPASIAL</p>
+                    {([
+                      { key: "routes", label: "Rute Eksisting" },
+                      { key: "population", label: "Kepadatan Penduduk" },
+                      { key: "facilities", label: "Fasilitas Publik" },
+                      { key: "property", label: "Property Go" },
+                    ] as const).map(({ key, label }) => (
+                      <label key={key} className="layer-toggle ws2-layer-row">
+                        <span><i className={`swatch ${key}-swatch`} /> {label}</span>
+                        <div className="ws2-layer-ctrls">
+                          <span className="ws2-kebab">⋮</span>
+                          <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
+                        </div>
+                      </label>
+                    ))}
+                    <div className="layer-toggle ws2-layer-static ws2-layer-row">
+                      <span><i className="swatch routes-swatch" /> Batas Administrasi</span>
                       <span className="ws2-kebab">⋮</span>
-                      <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
                     </div>
-                  </label>
-                ))}
-                <div className="layer-toggle ws2-layer-static ws2-layer-row">
-                  <span><i className="swatch routes-swatch" /> Batas Administrasi</span>
-                  <span className="ws2-kebab">⋮</span>
-                </div>
-                <div className="layer-toggle ws2-layer-disabled ws2-layer-row">
-                  <span><i className="swatch routes-swatch" /> Daerah Rawan Banjir</span>
-                  <div className="ws2-layer-ctrls">
-                    <small>Belum tersedia</small>
-                    <span className="ws2-kebab">⋮</span>
-                  </div>
-                </div>
-                {([
-                  { key: "buffer", label: "Buffer layanan" },
-                  { key: "stops", label: "Halte analisis" },
-                  { key: "overlap", label: "Segmen overlap" },
-                ] as const).map(({ key, label }) => (
-                  <label key={key} className="layer-toggle ws2-layer-row">
-                    <span><i className={`swatch ${key}-swatch`} /> {label}</span>
-                    <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
-                  </label>
-                ))}
-              </div>
-
-              <div className="panel-block">
-                <p className="panel-kicker">HALTE</p>
-                <div className="ws2-halte"><strong>Wates</strong><span>titik analisis</span></div>
-                <p className="ws2-halte-note">Halte dibangun pada jarak teratur di sepanjang koridor usulan.</p>
-              </div>
-
-              <div className="panel-block ws2-scenario-section">
-                <p className="panel-kicker">GANTI SKENARIO</p>
-                <div className="scenario-tabs ws2-scenario-list">
-                  {scenarios.map((s) => (
-                    <button
-                      key={s.id}
-                      className={`scenario-tab ${s.id === activeScenarioId ? "active" : ""}`}
-                      aria-pressed={s.id === activeScenarioId}
-                      onClick={() => {
-                        cancelRequests();
-                        switchScenario(s.id);
-                      }}
-                    >
-                      {s.name}
-                    </button>
-                  ))}
-                </div>
-                <div className="ws2-scenario-actions">
-                  <button
-                    type="button"
-                    className="ws2-btn-create-scenario"
-                    title="Buat skenario baru"
-                    aria-label="Buat skenario baru"
-                    onClick={() => createScenario()}
-                  >
-                    <Plus size={13} /> Buat skenario baru
-                  </button>
-                  <button
-                    type="button"
-                    className="ws2-btn-duplicate-scenario"
-                    title="Duplikat skenario aktif"
-                    aria-label="Duplikat"
-                    onClick={() => duplicateScenario()}
-                  >
-                    <Copy size={13} /> Duplikat
-                  </button>
-                </div>
-                <div className="route-name-row">
-                  <input
-                    className="route-name-input"
-                    value={activeScenario.name}
-                    onChange={(e) => renameScenario(activeScenarioId, e.target.value)}
-                    placeholder="Nama skenario"
-                    aria-label="Nama skenario"
-                  />
-                  <button
-                    type="button"
-                    className="route-delete-btn"
-                    aria-label="Hapus skenario aktif"
-                    title="Hapus skenario aktif"
-                    disabled={scenarios.length === 1}
-                    onClick={() => deleteScenario(activeScenarioId)}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-                {analysis && (
-                  <div className="ws2-scenario-score">
-                    <div>
-                      <strong>Skenario {activeScenario.name}</strong>
-                      <small>Wates – YIA</small>
+                    <div className="layer-toggle ws2-layer-disabled ws2-layer-row">
+                      <span><i className="swatch routes-swatch" /> Daerah Rawan Banjir</span>
+                      <div className="ws2-layer-ctrls">
+                        <small>Belum tersedia</small>
+                        <span className="ws2-kebab">⋮</span>
+                      </div>
                     </div>
-                    <b>Skor {Math.round(analysis.baseline.score)}/100</b>
                   </div>
-                )}
-              </div>
+
+                  <div className="panel-block">
+                    <p className="panel-kicker">LAYER ANALISIS</p>
+                    {([
+                      { key: "buffer", label: "Buffer layanan (500m)" },
+                      { key: "stops", label: "Halte analisis" },
+                      { key: "overlap", label: "Segmen overlap" },
+                    ] as const).map(({ key, label }) => (
+                      <label key={key} className="layer-toggle ws2-layer-row">
+                        <span><i className={`swatch ${key}-swatch`} /> {label}</span>
+                        <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="panel-block ws2-scenario-section">
+                    <p className="panel-kicker">GANTI SKENARIO</p>
+                    <div className="scenario-tabs ws2-scenario-list">
+                      {scenarios.map((s) => (
+                        <button
+                          key={s.id}
+                          className={`scenario-tab ${s.id === activeScenarioId ? "active" : ""}`}
+                          aria-pressed={s.id === activeScenarioId}
+                          onClick={() => {
+                            cancelRequests();
+                            switchScenario(s.id);
+                          }}
+                        >
+                          {s.name}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="ws2-scenario-actions">
+                      <button
+                        type="button"
+                        className="ws2-btn-create-scenario"
+                        title="Buat skenario baru"
+                        aria-label="Buat skenario baru"
+                        onClick={() => createScenario()}
+                      >
+                        <Plus size={13} /> Buat skenario baru
+                      </button>
+                      <button
+                        type="button"
+                        className="ws2-btn-duplicate-scenario"
+                        title="Duplikat skenario aktif"
+                        aria-label="Duplikat"
+                        onClick={() => duplicateScenario()}
+                      >
+                        <Copy size={13} /> Duplikat
+                      </button>
+                    </div>
+                    <div className="route-name-row">
+                      <input
+                        className="route-name-input"
+                        value={activeScenario.name}
+                        onChange={(e) => renameScenario(activeScenarioId, e.target.value)}
+                        placeholder="Nama skenario"
+                        aria-label="Nama skenario"
+                      />
+                      <button
+                        type="button"
+                        className="route-delete-btn"
+                        aria-label="Hapus skenario aktif"
+                        title="Hapus skenario aktif"
+                        disabled={scenarios.length === 1}
+                        onClick={() => deleteScenario(activeScenarioId)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                    {analysis && (
+                      <div className="ws2-scenario-score">
+                        <div>
+                          <strong>Skenario {activeScenario.name}</strong>
+                          <small>Wates – YIA</small>
+                        </div>
+                        <b>Skor {Math.round(analysis.baseline.score)}/100</b>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {sidebarMode === "rute" && (
+                <div className="panel-block">
+                  <p className="panel-kicker">INFORMASI RUTE USULAN</p>
+                  <div className="ws2-route-info-card">
+                    <div className="ws2-route-info-row">
+                      <span>Status</span>
+                      <strong className="text-emerald-700">{route ? "Rute Aktif" : "Belum Digambar"}</strong>
+                    </div>
+                    <div className="ws2-route-info-row">
+                      <span>Panjang Koridor</span>
+                      <strong>{routeLengthKm.toLocaleString("id-ID")} km</strong>
+                    </div>
+                    <div className="ws2-route-info-row">
+                      <span>Jumlah Titik Arah</span>
+                      <strong>{pointCount} titik</strong>
+                    </div>
+                    <div className="ws2-route-info-row">
+                      <span>Jaringan Jalan</span>
+                      <strong className="text-teal-700">{snapPreview ? "Preview Jalan" : "OSRM Snapped"}</strong>
+                    </div>
+                  </div>
+
+                  <p className="ws2-halte-note">
+                    Gunakan tombol <b>Ikuti jalan</b> di toolbar peta untuk mencocokkan garis usulan ke jaringan jalan resmi.
+                  </p>
+                </div>
+              )}
+
+              {sidebarMode === "halte" && (
+                <div className="panel-block">
+                  <p className="panel-kicker">DAFTAR HALTE KORIDOR</p>
+                  <div className="ws2-halte-list">
+                    {stopsList.map((stop, i) => (
+                      <div key={i} className="ws2-sidebar-item">
+                        <span className="ws2-item-dot halte-dot" />
+                        <div>
+                          <strong>{stop.name}</strong>
+                          <small>{stop.dist} · {stop.status}</small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="ws2-halte-note">
+                    Halte ditempatkan pada jarak teratur 800 meter di sepanjang koridor rute dengan jangkauan jalan kaki 500 meter.
+                  </p>
+                </div>
+              )}
             </>
           )}
 
@@ -858,6 +987,46 @@ export default function Workspace() {
                 datasetFitRequest={datasetFitRequest}
                 snapPreview={snapPreview}
               />
+              {/* Floating Scenario Card on Map (Figma Desktop-6) */}
+              <div className="ws2-floating-scenario">
+                <div
+                  className="ws2-floating-scenario-pill"
+                  onClick={() => setFloatingScenarioOpen(!floatingScenarioOpen)}
+                >
+                  <div className="ws2-floating-scenario-left">
+                    <span className="ws2-floating-kicker">
+                      Ganti Skenario {floatingScenarioOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    </span>
+                    <strong>Skenario {activeScenario.name}</strong>
+                    <small>Wates – YIA</small>
+                  </div>
+                  {analysis && (
+                    <div className="ws2-floating-score">
+                      <strong>Skor {Math.round(analysis.baseline.score)}/100</strong>
+                    </div>
+                  )}
+                </div>
+
+                {floatingScenarioOpen && (
+                  <div className="ws2-floating-scenario-dropdown">
+                    {scenarios.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className={`ws2-floating-scenario-item${s.id === activeScenarioId ? " active" : ""}`}
+                        onClick={() => {
+                          cancelRequests();
+                          switchScenario(s.id);
+                          setFloatingScenarioOpen(false);
+                        }}
+                      >
+                        <span>Skenario {s.name}</span>
+                        {s.id === activeScenarioId && <Check size={14} className="text-teal-600" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {dragActive && (
                 <div className="map-drop-overlay" aria-hidden="true">
                   <span><FileUp size={24} /></span>
