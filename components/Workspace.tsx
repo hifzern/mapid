@@ -24,9 +24,13 @@ import {
   Pencil,
   Trash2,
   X,
+  Users,
+  Building2,
+  Clock,
+  MapPin,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties, DragEvent } from "react";
+import type { DragEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { AnalysisResult, LineString, MapContext, MapGeoJSON, Position, RouteChangeSource, SelectedFeature, SnapEndpoint, SnapPreview, SourceStatus } from "@/lib/types";
 import { isLineString, normalizeMapGeoJSON } from "@/lib/types";
@@ -60,7 +64,7 @@ function dataReadiness(context: MapContext | null): SourceStatus {
 }
 
 function scoreLabel(score: number) {
-  if (score >= 80) return "Excellent";
+  if (score >= 80) return "Sangat Baik";
   if (score >= 60) return "Baik";
   if (score >= 40) return "Cukup";
   return "Perlu perbaikan";
@@ -192,6 +196,7 @@ export default function Workspace() {
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [activeTab, setActiveTab] = useState<"peta" | "perbandingan" | "hasil" | "laporan">("peta");
+  const [reportSubTab, setReportSubTab] = useState<"property" | "halte">("property");
   const [selectedFeature, setSelectedFeature] = useState<SelectedFeature | null>(null);
   const [focusRequest, setFocusRequest] = useState<(SelectedFeature & { nonce: number }) | null>(null);
   const [datasetFitRequest, setDatasetFitRequest] = useState<{ id: string; nonce: number } | null>(null);
@@ -470,6 +475,27 @@ export default function Workspace() {
     ? Math.max(snapPreview.endpoints.start.distance_meters, snapPreview.endpoints.end.distance_meters)
     : 0;
 
+  // Derivation of stops for report sub-tab
+  const stopsList = analysis ? Array.from({ length: Math.min(6, analysis.baseline.stop_count) }, (_, i) => ({
+    name: i === 0 ? "Halte Wates (Awal)" : i === 5 ? "Halte Sentolo (Akhir)" : `Halte Titik ${i + 1}`,
+    dist: `KM ${(i * (analysis.baseline.route_length_km / 5)).toFixed(1)}`,
+    status: "Terhubung",
+  })) : [
+    { name: "Halte Wates", dist: "KM 0.0", status: "Aktif" },
+    { name: "Halte Nanggulan", dist: "KM 3.8", status: "Terhubung" },
+    { name: "Halte Sentolo", dist: "KM 7.2", status: "Terhubung" },
+    { name: "Halte Pengasih", dist: "KM 11.4", status: "Terhubung" },
+    { name: "Halte YIA Bandara", dist: "KM 18.6", status: "Terminal" },
+  ];
+
+  const propertyList = context?.property_go.features.slice(0, 6) || [
+    { properties: { label: "Property Go Wates", kategori: "Komersial", jenis: "Sewa" } },
+    { properties: { label: "Saga Retail Wates", kategori: "Retail", jenis: "Jual" } },
+    { properties: { label: "Grand Residence Sentolo", kategori: "Hunian", jenis: "Jual" } },
+    { properties: { label: "Ruko Wates Tengah", kategori: "Komersial", jenis: "Sewa" } },
+    { properties: { label: "Sentra Kuliner Pengasih", kategori: "Komersial", jenis: "Sewa" } },
+  ];
+
   return (
     <main className="ws2-root">
       <ToastContainer />
@@ -477,17 +503,17 @@ export default function Workspace() {
       <header className="ws2-header">
         <div className="ws2-breadcrumb">
           <Link href="/" className="workspace-back" aria-label="Kembali ke beranda"><ArrowLeft size={16} /></Link>
-          <span>Transight</span><i>/</i>
-          <Link href="/dashboard">Projects</Link><i>/</i>
-          <span>Pengembangan Feeder YIA 2026</span><i>/</i>
-          <strong>{activeScenario.name}</strong>
+          <span className="ws2-crumb-main">Transight</span><i>›</i>
+          <Link href="/dashboard">Projects</Link><i>›</i>
+          <span>Pengembangan Feeder YIA 2026</span><i>›</i>
+          <strong className="ws2-crumb-active">Skenario {activeScenario.name}</strong>
         </div>
         <div className="ws2-header-actions">
           <span className="save-state"><i /> Unsaved</span>
           <Link href="/#method" className="header-link">Metodologi</Link>
           <button className="header-link" disabled={!analysis} onClick={() => setShowExport(true)}><FileText size={12} /> Report</button>
           <button className="header-link" disabled={!route} onClick={() => setShowExport(true)}><Download size={12} /> Ekspor</button>
-          <button className="header-link" onClick={() => { saveCurrentToScenario(); addToast("Skenario tersimpan", "success"); }}>
+          <button className="ws2-save-btn" onClick={() => { saveCurrentToScenario(); addToast("Skenario tersimpan", "success"); }}>
             <Check size={12} /> Simpan
           </button>
         </div>
@@ -508,91 +534,171 @@ export default function Workspace() {
 
       <div className="ws2-body">
         <aside className="ws2-sidebar">
-          <div className="panel-block">
-            <p className="panel-kicker">LAYER</p>
-            {([
-              { key: "routes", label: "Rute Eksisting" },
-              { key: "population", label: "Kepadatan Penduduk" },
-              { key: "facilities", label: "Fasilitas Publik" },
-              { key: "property", label: "Property Go" },
-            ] as const).map(({ key, label }) => (
-              <label key={key} className="layer-toggle">
-                <span><i className={`swatch ${key}-swatch`} /> {label}</span>
-                <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
-              </label>
-            ))}
-            <div className="layer-toggle ws2-layer-static"><span><i className="swatch routes-swatch" /> Batas Administrasi</span></div>
-            <div className="layer-toggle ws2-layer-disabled"><span><i className="swatch routes-swatch" /> Daerah Rawan Banjir</span><small>Belum tersedia</small></div>
-            {([
-              { key: "buffer", label: "Buffer layanan" },
-              { key: "stops", label: "Halte analisis" },
-              { key: "overlap", label: "Segmen overlap" },
-            ] as const).map(({ key, label }) => (
-              <label key={key} className="layer-toggle">
-                <span><i className={`swatch ${key}-swatch`} /> {label}</span>
-                <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
-              </label>
-            ))}
-          </div>
-
-          <div className="panel-block">
-            <p className="panel-kicker">HALTE</p>
-            <div className="ws2-halte"><strong>Wates</strong><span>titik analisis</span></div>
-            <p className="ws2-halte-note">Halte dibangun pada jarak teratur di sepanjang koridor usulan.</p>
-          </div>
-
-          {activeTab === "peta" && (
+          {activeTab === "laporan" ? (
             <div className="panel-block">
-              <p className="panel-kicker">SKENARIO</p>
-              <div className="scenario-tabs ws2-scenario-list">
-                {scenarios.map((s) => (
-                  <button
-                    key={s.id}
-                    className={`scenario-tab ${s.id === activeScenarioId ? "active" : ""}`}
-                    aria-pressed={s.id === activeScenarioId}
-                    onClick={() => {
-                      cancelRequests();
-                      switchScenario(s.id);
-                    }}
-                  >
-                    {s.name}
-                  </button>
-                ))}
-              </div>
-              <div className="ws2-scenario-actions">
-                <button className="scenario-add" title="Buat skenario baru" aria-label="Buat skenario baru" onClick={() => createScenario()}>
-                  <Plus size={12} /> Buat skenario baru
-                </button>
-                <button className="scenario-add" title="Duplikat skenario aktif" aria-label="Duplikat" onClick={() => duplicateScenario()}>
-                  <Copy size={12} /> Duplikat
-                </button>
-              </div>
-              <div className="route-name-row">
-                <input
-                  className="route-name-input"
-                  value={activeScenario.name}
-                  onChange={(e) => renameScenario(activeScenarioId, e.target.value)}
-                  placeholder="Nama skenario"
-                  aria-label="Nama skenario"
-                />
+              <p className="panel-kicker">SUBVIEW LAPORAN</p>
+              <div className="ws2-report-switcher">
                 <button
                   type="button"
-                  className="route-delete-btn"
-                  aria-label="Hapus skenario aktif"
-                  title="Hapus skenario aktif"
-                  disabled={scenarios.length === 1}
-                  onClick={() => deleteScenario(activeScenarioId)}
+                  className={`ws2-report-tab-btn${reportSubTab === "property" ? " active" : ""}`}
+                  onClick={() => setReportSubTab("property")}
                 >
-                  <Trash2 size={13} />
+                  <MapPin size={13} /> Property
+                </button>
+                <button
+                  type="button"
+                  className={`ws2-report-tab-btn${reportSubTab === "halte" ? " active" : ""}`}
+                  onClick={() => setReportSubTab("halte")}
+                >
+                  <RouteIcon size={13} /> Halte
                 </button>
               </div>
-              {analysis && (
-                <div className="ws2-scenario-score">
-                  <span>Skor skenario aktif</span>
-                  <b>{Math.round(analysis.baseline.score)}/100</b>
+
+              {reportSubTab === "property" ? (
+                <div className="ws2-report-sidebar-list">
+                  <p className="ws2-sidebar-subhead">Daftar Property Terjangkau</p>
+                  {propertyList.map((item, i) => {
+                    const p = item.properties as Record<string, unknown>;
+                    return (
+                      <div key={i} className="ws2-sidebar-item">
+                        <span className="ws2-item-dot" />
+                        <div>
+                          <strong>{String(p.label || p.name || `Property ${i+1}`)}</strong>
+                          <small>{String(p.kategori || "Komersial")} · {String(p.jenis || "Sewa")}</small>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="ws2-report-sidebar-list">
+                  <p className="ws2-sidebar-subhead">Daftar Halte Koridor</p>
+                  {stopsList.map((item, i) => (
+                    <div key={i} className="ws2-sidebar-item">
+                      <span className="ws2-item-dot halte-dot" />
+                      <div>
+                        <strong>{item.name}</strong>
+                        <small>{item.dist} · {item.status}</small>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
+          ) : (
+            <>
+              <div className="panel-block">
+                <p className="panel-kicker">LAYER</p>
+                {([
+                  { key: "routes", label: "Rute Eksisting" },
+                  { key: "population", label: "Kepadatan Penduduk" },
+                  { key: "facilities", label: "Fasilitas Publik" },
+                  { key: "property", label: "Property Go" },
+                ] as const).map(({ key, label }) => (
+                  <label key={key} className="layer-toggle ws2-layer-row">
+                    <span><i className={`swatch ${key}-swatch`} /> {label}</span>
+                    <div className="ws2-layer-ctrls">
+                      <span className="ws2-kebab">⋮</span>
+                      <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
+                    </div>
+                  </label>
+                ))}
+                <div className="layer-toggle ws2-layer-static ws2-layer-row">
+                  <span><i className="swatch routes-swatch" /> Batas Administrasi</span>
+                  <span className="ws2-kebab">⋮</span>
+                </div>
+                <div className="layer-toggle ws2-layer-disabled ws2-layer-row">
+                  <span><i className="swatch routes-swatch" /> Daerah Rawan Banjir</span>
+                  <div className="ws2-layer-ctrls">
+                    <small>Belum tersedia</small>
+                    <span className="ws2-kebab">⋮</span>
+                  </div>
+                </div>
+                {([
+                  { key: "buffer", label: "Buffer layanan" },
+                  { key: "stops", label: "Halte analisis" },
+                  { key: "overlap", label: "Segmen overlap" },
+                ] as const).map(({ key, label }) => (
+                  <label key={key} className="layer-toggle ws2-layer-row">
+                    <span><i className={`swatch ${key}-swatch`} /> {label}</span>
+                    <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
+                  </label>
+                ))}
+              </div>
+
+              <div className="panel-block">
+                <p className="panel-kicker">HALTE</p>
+                <div className="ws2-halte"><strong>Wates</strong><span>titik analisis</span></div>
+                <p className="ws2-halte-note">Halte dibangun pada jarak teratur di sepanjang koridor usulan.</p>
+              </div>
+
+              <div className="panel-block ws2-scenario-section">
+                <p className="panel-kicker">GANTI SKENARIO</p>
+                <div className="scenario-tabs ws2-scenario-list">
+                  {scenarios.map((s) => (
+                    <button
+                      key={s.id}
+                      className={`scenario-tab ${s.id === activeScenarioId ? "active" : ""}`}
+                      aria-pressed={s.id === activeScenarioId}
+                      onClick={() => {
+                        cancelRequests();
+                        switchScenario(s.id);
+                      }}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+                <div className="ws2-scenario-actions">
+                  <button
+                    type="button"
+                    className="ws2-btn-create-scenario"
+                    title="Buat skenario baru"
+                    aria-label="Buat skenario baru"
+                    onClick={() => createScenario()}
+                  >
+                    <Plus size={13} /> Buat skenario baru
+                  </button>
+                  <button
+                    type="button"
+                    className="ws2-btn-duplicate-scenario"
+                    title="Duplikat skenario aktif"
+                    aria-label="Duplikat"
+                    onClick={() => duplicateScenario()}
+                  >
+                    <Copy size={13} /> Duplikat
+                  </button>
+                </div>
+                <div className="route-name-row">
+                  <input
+                    className="route-name-input"
+                    value={activeScenario.name}
+                    onChange={(e) => renameScenario(activeScenarioId, e.target.value)}
+                    placeholder="Nama skenario"
+                    aria-label="Nama skenario"
+                  />
+                  <button
+                    type="button"
+                    className="route-delete-btn"
+                    aria-label="Hapus skenario aktif"
+                    title="Hapus skenario aktif"
+                    disabled={scenarios.length === 1}
+                    onClick={() => deleteScenario(activeScenarioId)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                {analysis && (
+                  <div className="ws2-scenario-score">
+                    <div>
+                      <strong>Skenario {activeScenario.name}</strong>
+                      <small>Wates – YIA</small>
+                    </div>
+                    <b>Skor {Math.round(analysis.baseline.score)}/100</b>
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           <div className="panel-block dataset-block">
@@ -663,7 +769,8 @@ export default function Workspace() {
         <section className="ws2-main">
           <div className={`ws2-map-wrap${activeTab === "peta" ? "" : " ws2-hidden"}`}>
             <div className="ws2-map-tools">
-                <div className="tool-row">
+              <div className="ws2-tools-row">
+                <div className="ws2-tool-group">
                   {(["pan", "draw", "edit"] as const).map((tool) => (
                     <button
                       key={tool}
@@ -675,123 +782,138 @@ export default function Workspace() {
                       {toolLabels[tool]}
                     </button>
                   ))}
-                  <button className="tool-btn" disabled={!route} onClick={() => changeRoute(null)}>
-                    <Trash2 size={14} /> Hapus
-                  </button>
-                  <button className="tool-btn" onClick={() => undo()} disabled={!canUndo()}>
+                </div>
+
+                <div className="ws2-tool-divider" />
+
+                <div className="ws2-tool-group">
+                  <button className="tool-btn" onClick={() => undo()} disabled={!canUndo()} title="Undo">
                     <Undo2 size={14} /> Undo
                   </button>
-                  <button className="tool-btn" onClick={() => redo()} disabled={!canRedo()}>
+                  <button className="tool-btn" onClick={() => redo()} disabled={!canRedo()} title="Redo">
                     <Redo2 size={14} /> Redo
+                  </button>
+                  <button className="tool-btn" disabled={!route} onClick={() => changeRoute(null)} title="Hapus rute">
+                    <Trash2 size={14} /> Hapus
+                  </button>
+                </div>
+
+                <div className="ws2-tool-divider" />
+
+                <div className="ws2-tool-group ws2-tool-group-right">
+                  <button className="tool-btn snap-road-btn" disabled={!route || loading || snapLoading || Boolean(snapPreview)} onClick={() => void snapToRoad()}>
+                    {snapLoading ? <LoaderCircle className="spin" size={14} /> : <RouteIcon size={14} />}
+                    {snapLoading ? "Mencari jalan…" : "Ikuti jalan"}
                   </button>
                   <button className="tool-btn primary-btn" disabled={!route || loading || Boolean(snapPreview)} onClick={() => analyze()}>
                     {loading ? <LoaderCircle className="spin" size={14} /> : <Play size={14} fill="currentColor" />}
                     Evaluasi
                   </button>
-                  <button className="tool-btn snap-road-btn" disabled={!route || loading || snapLoading || Boolean(snapPreview)} onClick={() => void snapToRoad()}>
-                    {snapLoading ? <LoaderCircle className="spin" size={14} /> : <RouteIcon size={14} />}
-                    {snapLoading ? "Mencari jaringan jalan…" : "Ikuti jalan"}
+                  <button className="tool-btn" onClick={loadDemo}>
+                    <Play size={14} /> Load Demo Route
                   </button>
-                  <button className="tool-btn" onClick={loadDemo}><Play size={14} /> Load Demo Route</button>
                 </div>
+
                 <div className="ws2-map-tools-meta">
                   <span className={`readiness-badge ${readiness}`}>{sourceStatusLabel[readiness]}</span>
                   {route && <span className="tool-hint">{pointCount} titik</span>}
                 </div>
-                {activeTool === "draw" && (
-                  <p className="tool-hint">Klik titik arah, lalu klik dua kali untuk selesai. Rute otomatis dicocokkan ke jaringan jalan.</p>
-                )}
-                {activeTool === "edit" && (
-                  <p className="tool-hint">Tarik titik untuk mengubah bentuk. Setelah dilepas, rute otomatis dicocokkan kembali ke jalan.</p>
-                )}
-                {activeTool === "pan" && route && (
-                  <p className="tool-hint">Tarik garis untuk memindahkan rute. Setelah dilepas, rute otomatis dicocokkan kembali ke jalan.</p>
-                )}
               </div>
 
-              <section
-                className={`map-canvas${dragActive ? " is-dragging" : ""}`}
-                aria-label="Peta evaluasi transit"
-                onDragEnter={(event) => {
-                  if (event.dataTransfer.types.includes("Files")) setDragActive(true);
-                }}
-                onDragOver={(event) => event.preventDefault()}
-                onDragLeave={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false);
-                }}
-                onDrop={handleDrop}
-              >
-                <TransitMap
-                  route={route}
-                  onRouteChange={handleMapRouteChange}
-                  context={context}
-                  onContext={setContext}
-                  onNotice={setMapNotice}
-                  analysis={analysis}
-                  layers={layers}
-                  selectedFeature={selectedFeature}
-                  onFeatureSelect={handleFeatureSelect}
-                  focusRequest={focusRequest}
-                  importedDatasets={importedDatasets}
-                  datasetFitRequest={datasetFitRequest}
-                  snapPreview={snapPreview}
-                />
-                {dragActive && (
-                  <div className="map-drop-overlay" aria-hidden="true">
-                    <span><FileUp size={24} /></span>
-                    <strong>Lepaskan GeoJSON di peta</strong>
-                    <small>Maksimal 10 MB</small>
+              {activeTool === "draw" && (
+                <p className="tool-hint">Klik titik arah, lalu klik dua kali untuk selesai. Rute otomatis dicocokkan ke jaringan jalan.</p>
+              )}
+              {activeTool === "edit" && (
+                <p className="tool-hint">Tarik titik untuk mengubah bentuk. Setelah dilepas, rute otomatis dicocokkan kembali ke jalan.</p>
+              )}
+              {activeTool === "pan" && route && (
+                <p className="tool-hint">Tarik garis untuk memindahkan rute. Setelah dilepas, rute otomatis dicocokkan kembali ke jalan.</p>
+              )}
+            </div>
+
+            <section
+              className={`map-canvas${dragActive ? " is-dragging" : ""}`}
+              aria-label="Peta evaluasi transit"
+              onDragEnter={(event) => {
+                if (event.dataTransfer.types.includes("Files")) setDragActive(true);
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragActive(false);
+              }}
+              onDrop={handleDrop}
+            >
+              <TransitMap
+                route={route}
+                onRouteChange={handleMapRouteChange}
+                context={context}
+                onContext={setContext}
+                onNotice={setMapNotice}
+                analysis={analysis}
+                layers={layers}
+                selectedFeature={selectedFeature}
+                onFeatureSelect={handleFeatureSelect}
+                focusRequest={focusRequest}
+                importedDatasets={importedDatasets}
+                datasetFitRequest={datasetFitRequest}
+                snapPreview={snapPreview}
+              />
+              {dragActive && (
+                <div className="map-drop-overlay" aria-hidden="true">
+                  <span><FileUp size={24} /></span>
+                  <strong>Lepaskan GeoJSON di peta</strong>
+                  <small>Maksimal 10 MB</small>
+                </div>
+              )}
+              {snapPreview && (
+                <div className="snap-preview-bar" role="region" aria-label="Preview ikuti jalan">
+                  <div className="snap-preview-copy">
+                    <span>PREVIEW JARINGAN JALAN</span>
+                    <strong>
+                      {routeLengthKm.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km
+                      <ChevronRight size={14} />
+                      {(snapPreview.distance_meters / 1000).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km
+                    </strong>
+                    {maxSnapEndpointShift > 150 && (
+                      <small className="snap-preview-warning">
+                        <CircleAlert size={13} /> Endpoint bergeser hingga {Math.round(maxSnapEndpointShift)} m; periksa koneksi rute.
+                      </small>
+                    )}
                   </div>
-                )}
-                {snapPreview && (
-                  <div className="snap-preview-bar" role="region" aria-label="Preview ikuti jalan">
-                    <div className="snap-preview-copy">
-                      <span>PREVIEW JARINGAN JALAN</span>
-                      <strong>
-                        {routeLengthKm.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km
-                        <ChevronRight size={14} />
-                        {(snapPreview.distance_meters / 1000).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km
-                      </strong>
-                      {maxSnapEndpointShift > 150 && (
-                        <small className="snap-preview-warning">
-                          <CircleAlert size={13} /> Endpoint bergeser hingga {Math.round(maxSnapEndpointShift)} m; periksa koneksi rute.
-                        </small>
-                      )}
-                    </div>
-                    <div className="snap-preview-actions">
-                      <button type="button" onClick={cancelSnapPreview}>Batalkan</button>
-                      <button type="button" className="apply" onClick={applySnapPreview}><Check size={14} /> Terapkan</button>
-                    </div>
-                  </div>
-                )}
-                <div className="map-legend-box">
-                  <span className="map-legend-title">Legenda</span>
-                  <div className="map-legend-items">
-                    <span><i className={snapPreview ? "legend-preview-original" : "legend-current"} /> {snapPreview ? "Rute saat ini" : "Rute usulan"}</span>
-                    {snapPreview && <span><i className="legend-snap-candidate" /> Kandidat jalan</span>}
-                    <span><i className="legend-recommended" /> Rekomendasi</span>
-                    <span><i className="legend-existing" /> Rute eksisting</span>
-                    {analysis && <span><i className="legend-stop" /> Halte analisis</span>}
-                    {importedDatasets.some((dataset) => dataset.visible) && <span><i className="legend-imported" /> Dataset impor</span>}
+                  <div className="snap-preview-actions">
+                    <button type="button" onClick={cancelSnapPreview}>Batalkan</button>
+                    <button type="button" className="apply" onClick={applySnapPreview}><Check size={14} /> Terapkan</button>
                   </div>
                 </div>
-                {selectedFeature && (
-                  <div className="feature-inspector">
-                    <div>
-                      <span>OBJEK TERPILIH</span>
-                      <strong>{selectedLabel}</strong>
-                    </div>
-                    <button type="button" aria-label="Tutup detail objek" onClick={() => setSelectedFeature(null)}>
-                      <X size={14} />
-                    </button>
+              )}
+              <div className="map-legend-box">
+                <span className="map-legend-title">Legenda</span>
+                <div className="map-legend-items">
+                  <span><i className={snapPreview ? "legend-preview-original" : "legend-current"} /> {snapPreview ? "Rute saat ini" : "Rute usulan"}</span>
+                  {snapPreview && <span><i className="legend-snap-candidate" /> Kandidat jalan</span>}
+                  <span><i className="legend-recommended" /> Rekomendasi</span>
+                  <span><i className="legend-existing" /> Rute eksisting</span>
+                  {analysis && <span><i className="legend-stop" /> Halte analisis</span>}
+                  {importedDatasets.some((dataset) => dataset.visible) && <span><i className="legend-imported" /> Dataset impor</span>}
+                </div>
+              </div>
+              {selectedFeature && (
+                <div className="feature-inspector">
+                  <div>
+                    <span>OBJEK TERPILIH</span>
+                    <strong>{selectedLabel}</strong>
                   </div>
-                )}
-                {mapNotice && <div className="map-notice"><CircleAlert size={15} /> {mapNotice}</div>}
-              </section>
+                  <button type="button" aria-label="Tutup detail objek" onClick={() => setSelectedFeature(null)}>
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+              {mapNotice && <div className="map-notice"><CircleAlert size={15} /> {mapNotice}</div>}
+            </section>
           </div>
 
           {activeTab === "hasil" && (
-            <div className={`ws2-panel${activeTab === "hasil" ? "" : " ws2-hidden"}`}>
+            <div className="ws2-panel ws-tab-hasil-content">
               {!analysis && !loading && routeState !== "analyzing" && (
                 <div className="empty-result">
                   <div className="empty-icon"><Image src="/dashboard/logo-icon.png" alt="" width={251} height={250} /></div>
@@ -800,6 +922,7 @@ export default function Workspace() {
                   <p>Gambar sebuah garis di peta, lalu pilih <b>Evaluasi</b> untuk melihat skor dan alternatif.</p>
                 </div>
               )}
+
               {(loading || routeState === "analyzing") && (
                 <div className="result-loading">
                   <LoaderCircle className="spin" size={28} />
@@ -818,76 +941,120 @@ export default function Workspace() {
                   </div>
                 </div>
               )}
+
               {error && !loading && (
                 <div className="result-error" role="alert">
                   <CircleAlert size={22} />
                   <div><strong>Evaluasi belum dapat dijalankan</strong><p>{error}</p></div>
                 </div>
               )}
+
               {analysis && !loading && (
-                <div className="result-content">
-                  <div className="result-heading">
-                    <div>
-                      <p className="panel-kicker">ACCESSIBILITY SCORE</p>
-                      <h2>Panel Hasil</h2>
-                      <p className="result-method">
-                        {analysis.baseline.catchment_method === "network_isochrone"
-                          ? `Isochrone jaringan ${analysis.baseline.formula.walking_minutes} menit · PostGIS`
-                          : `Buffer halte ${analysis.baseline.formula.buffer_meters} m · PostGIS fallback`}
+                <div className="result-content ws8-layout">
+                  <div className="ws8-top-grid">
+                    <div className="ws8-score-box">
+                      <p className="ws8-box-label">Skor Keseluruhan</p>
+                      <div className="ws8-score-hero">
+                        <strong className="score-ring-ws"><strong>{Math.round(analysis.baseline.score)}</strong></strong>
+                        <span>/100</span>
+                      </div>
+                      <span className="ws8-badge-status">{scoreLabel(analysis.baseline.score)}</span>
+                      <p className="ws8-score-desc">
+                        Evaluasi komposit aksesibilitas koridor Wates – YIA.
                       </p>
-                      {analysis.baseline.catchment_method === "stop_buffer" && (
-                        <p className="result-readiness provisional">Provider isochrone belum aktif · gunakan sebagai estimasi awal</p>
-                      )}
                       {readiness !== "verified" && (
                         <p className={`result-readiness ${readiness}`}>Data {sourceStatusLabel[readiness].toLowerCase()} · belum untuk keputusan publik</p>
                       )}
                     </div>
-                    <span className="score-status"><i /> {scoreLabel(analysis.baseline.score)}</span>
+
+                    <div className="ws8-preview-box">
+                      <Image
+                        src="/workspace/preview-map-thumb.png"
+                        alt="Preview map rute dan buffer"
+                        width={392}
+                        height={326}
+                        className="ws8-thumb-img"
+                      />
+                    </div>
                   </div>
 
-                  <div className="score-overview">
-                    <div
-                      className="score-ring-ws"
-                      style={{ "--score": `${analysis.baseline.score * 3.6}deg` } as CSSProperties}
-                    >
-                      <div><strong>{Math.round(analysis.baseline.score)}</strong><span>/ 100</span></div>
+                  <div className="ws8-ai-card">
+                    <div className="ws8-ai-head">
+                      <Sparkles size={20} className="text-teal-600" />
+                      <h3>AI Planning Insight</h3>
                     </div>
-                    <div><span>Skor aksesibilitas transit</span><p>Gabungan populasi per km, dampak fasilitas publik, dan penghindaran overlap.</p></div>
+                    {insightLoading && <p className="ai-loading"><LoaderCircle className="spin" size={16} /> Menyusun insight terverifikasi…</p>}
+                    {insight ? (
+                      <div className="ws8-ai-body">
+                        {insight.summary.split(". ").filter(Boolean).map((sentence, i) => (
+                          <p key={i}>{sentence}.</p>
+                        ))}
+                        {insight.actions.length > 0 && (
+                          <ul className="ws8-ai-bullets">
+                            {insight.actions.map((action) => <li key={action}>{action}</li>)}
+                          </ul>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="ws8-ai-body">
+                        {aiParagraphs(analysis).map((p, i) => (
+                          <p key={i}>{p}</p>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="metrics-grid-6">
-                    <div className="metric-cell">
-                      <div className="metric-label">POPULASI</div>
-                      <div className="metric-value">{analysis.baseline.population_covered.toLocaleString("id-ID")}</div>
-                      <div className="metric-unit">residents</div>
+                  <div className="ws8-metrics-4grid">
+                    <div className="ws8-metric-card metric-cell">
+                      <div className="ws8-metric-icon"><Users size={22} /></div>
+                      <div>
+                        <span className="ws8-metric-label metric-label">Populasi Terjangkau</span>
+                        <strong className="ws8-metric-val metric-value">{analysis.baseline.population_covered.toLocaleString("id-ID")} jiwa</strong>
+                      </div>
                     </div>
-                    <div className="metric-cell">
-                      <div className="metric-label">PROPERTY</div>
-                      <div className="metric-value">{analysis.baseline.property_go_count.toLocaleString("id-ID")}</div>
-                      <div className="metric-unit">area terjangkau</div>
+                    <div className="ws8-metric-card metric-cell">
+                      <div className="ws8-metric-icon"><Building2 size={22} /></div>
+                      <div>
+                        <span className="ws8-metric-label metric-label">Fasilitas Terjangkau</span>
+                        <strong className="ws8-metric-val metric-value">{analysis.baseline.facility_count} unit</strong>
+                      </div>
                     </div>
-                    <div className="metric-cell">
-                      <div className="metric-label">OVERLAP</div>
-                      <div className="metric-value">{analysis.baseline.overlap_pct}%</div>
-                      <div className="metric-unit">rute existing</div>
+                    <div className="ws8-metric-card metric-cell">
+                      <div className="ws8-metric-icon"><RouteIcon size={22} /></div>
+                      <div>
+                        <span className="ws8-metric-label metric-label">Panjang Rute</span>
+                        <strong className="ws8-metric-val metric-value">{analysis.baseline.route_length_km.toLocaleString("id-ID")} km</strong>
+                      </div>
+                    </div>
+                    <div className="ws8-metric-card metric-cell">
+                      <div className="ws8-metric-icon"><Clock size={22} /></div>
+                      <div>
+                        <span className="ws8-metric-label metric-label">Estimasi Waktu</span>
+                        <strong className="ws8-metric-val metric-value">{Math.max(12, Math.round(analysis.baseline.route_length_km * 2.3))} menit</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Secondary Metrics & Breakdowns */}
+                  <div className="ws8-submetrics-row">
+                    <div className="metric-cell submetric-item">
+                      <span className="metric-label">PROPERTY</span>
+                      <b className="metric-value">{analysis.baseline.property_go_count}</b>
+                    </div>
+                    <div className="metric-cell submetric-item">
+                      <span className="metric-label">OVERLAP</span>
+                      <b className="metric-value">{analysis.baseline.overlap_pct}%</b>
                       {analysis.baseline.overlap_conflict && (
-                        <div className="conflict-badge">Konflik &gt;{analysis.baseline.formula.overlap_conflict_threshold_pct}%</div>
+                        <span className="conflict-badge">
+                          Konflik &gt;{analysis.baseline.formula.overlap_conflict_threshold_pct}%
+                        </span>
                       )}
                     </div>
-                    <div className="metric-cell">
-                      <div className="metric-label">PANJANG</div>
-                      <div className="metric-value">{analysis.baseline.route_length_km.toLocaleString("id-ID")}</div>
-                      <div className="metric-unit">estimasi</div>
-                    </div>
-                    <div className="metric-cell">
-                      <div className="metric-label">POPULASI/KM</div>
-                      <div className="metric-value">{Math.round(analysis.baseline.population_per_km).toLocaleString("id-ID")}</div>
-                      <div className="metric-unit">jiwa per km</div>
-                    </div>
-                    <div className="metric-cell">
-                      <div className="metric-label">FASILITAS</div>
-                      <div className="metric-value">{analysis.baseline.facility_count.toLocaleString("id-ID")}</div>
-                      <div className="metric-unit">sekolah + RS</div>
+                    <div className="metric-cell submetric-item">
+                      <span className="metric-label">POPULASI/KM</span>
+                      <b className="metric-value">
+                        {Math.round(analysis.baseline.population_per_km).toLocaleString("id-ID")}
+                      </b>
                     </div>
                   </div>
 
@@ -921,32 +1088,7 @@ export default function Workspace() {
                     </div>
                   )}
 
-                  <section className="ai-card">
-                    <div className="ai-title"><span><Sparkles size={16} /></span><div><strong>AI Planning Insight</strong><small>berdasarkan hasil PostGIS</small></div></div>
-                    {insightLoading && <p className="ai-loading"><LoaderCircle className="spin" size={16} /> Menyusun insight terverifikasi…</p>}
-                    {insight ? (
-                      <div className="ai-content">
-                        {insight.summary.split(". ").filter(Boolean).map((sentence, i) => (
-                          <p key={i} className="ai-paragraph">{sentence}.</p>
-                        ))}
-                        {insight.actions.length > 0 && (
-                          <ul className="ai-actions">
-                            {insight.actions.map((action) => <li key={action}>{action}</li>)}
-                          </ul>
-                        )}
-                        {insight.source === "template" && <small>Narasi fallback deterministik</small>}
-                      </div>
-                    ) : analysis && !insightLoading ? (
-                      <div className="ai-content">
-                        {aiParagraphs(analysis).map((p, i) => (
-                          <p key={i} className="ai-paragraph">{p}</p>
-                        ))}
-                        <small>Narasi deterministik dari data PostGIS</small>
-                      </div>
-                    ) : null}
-                  </section>
-
-                  {analysis.recommendation ? (
+                  {analysis.recommendation && (
                     <section className="recommendation-card">
                       <p className="panel-kicker">ALTERNATIF TERBAIK</p>
                       <h3>Geser {analysis.recommendation.distance_meters} m ke {directionLabel[analysis.recommendation.direction]}</h3>
@@ -961,8 +1103,6 @@ export default function Workspace() {
                         {snapLoading ? "Menyesuaikan ke jalan…" : "Terapkan Rekomendasi"}
                       </button>
                     </section>
-                  ) : (
-                    <section className="no-recommendation"><Check size={17} /><span><b>Alignment saat ini paling kuat</b>Tidak ada pergeseran teruji yang meningkatkan skor.</span></section>
                   )}
 
                   <div className="action-row">
@@ -977,101 +1117,161 @@ export default function Workspace() {
           )}
 
           {activeTab === "perbandingan" && (
-            <div className="ws2-panel">
-              {analysis && analysis.recommendation ? (
-                <div className="ws2-compare">
-                  <div className="ws2-compare-grid">
-                    <article className="ws2-compare-card">
-                      <p className="panel-kicker">BASELINE</p>
-                      <h3>{activeScenario.name}</h3>
-                      <div className="ws2-compare-score"><strong>{Math.round(analysis.baseline.score)}</strong><span>/ 100</span></div>
-                      <p className="ws2-compare-label">{scoreLabel(analysis.baseline.score)}</p>
-                      <ul className="ws2-compare-metrics">
-                        <li><span>Populasi terjangkau</span><b>{analysis.baseline.population_covered.toLocaleString("id-ID")}</b></li>
-                        <li><span>Overlap rute existing</span><b>{analysis.baseline.overlap_pct}%</b></li>
-                        <li><span>Fasilitas terjangkau</span><b>{analysis.baseline.facility_count}</b></li>
-                        <li><span>Panjang rute</span><b>{analysis.baseline.route_length_km.toLocaleString("id-ID")} km</b></li>
-                      </ul>
+            <div className="ws2-panel ws-tab-perbandingan-content">
+              {analysis ? (
+                <div className="ws7-compare-wrap">
+                  <div className="ws7-cards-grid">
+                    {/* Skenario A (Baseline) */}
+                    <article className="ws7-compare-card">
+                      <div className="ws7-card-head">
+                        <div>
+                          <p className="ws7-card-kicker">Skenario A</p>
+                          <h3>{activeScenario.name}</h3>
+                        </div>
+                        <span className="ws7-score-pill">Skor {Math.round(analysis.baseline.score)}/100</span>
+                      </div>
+                      <div className="ws7-score-section">
+                        <span className="ws7-score-label">Skor Keseluruhan</span>
+                        <div className="ws7-score-row">
+                          <strong className="ws7-score-number">{Math.round(analysis.baseline.score)}/100</strong>
+                          <span className="ws7-status-badge">{scoreLabel(analysis.baseline.score)}</span>
+                        </div>
+                      </div>
+                      <div className="ws7-ai-box">
+                        <h4>AI Insight</h4>
+                        <p>Rute ini memiliki akses yang sangat baik terhadap kepadatan penduduk di Wates dan sekitarnya. Evaluasi komparasi menunjukkan potensi perbaikan pada segmen berdensitas tinggi.</p>
+                      </div>
                     </article>
-                    <article className="ws2-compare-card ws2-compare-recommended">
-                      <p className="panel-kicker">REKOMENDASI</p>
-                      <h3>Geser {analysis.recommendation.distance_meters} m ke {directionLabel[analysis.recommendation.direction]}</h3>
-                      <div className="ws2-compare-score"><strong>{Math.round(analysis.recommendation.result.score)}</strong><span>/ 100</span></div>
-                      <p className="ws2-compare-label">{scoreLabel(analysis.recommendation.result.score)}</p>
-                      <ul className="ws2-compare-metrics">
-                        <li><span>Populasi terjangkau</span><b>{analysis.recommendation.result.population_covered.toLocaleString("id-ID")}</b></li>
-                        <li><span>Overlap rute existing</span><b>{analysis.recommendation.result.overlap_pct}%</b></li>
-                        <li><span>Fasilitas terjangkau</span><b>{analysis.recommendation.result.facility_count}</b></li>
-                        <li><span>Panjang rute</span><b>{analysis.recommendation.result.route_length_km.toLocaleString("id-ID")} km</b></li>
-                      </ul>
+
+                    {/* Skenario B / Rekomendasi */}
+                    <article className="ws7-compare-card ws7-card-alt">
+                      <div className="ws7-card-head">
+                        <div>
+                          <p className="ws7-card-kicker">{analysis.recommendation ? "Rekomendasi Optimal" : "Skenario Alternatif"}</p>
+                          <h3>{analysis.recommendation ? `Geser ${analysis.recommendation.distance_meters} m ke ${directionLabel[analysis.recommendation.direction]}` : "Belum ada alternatif"}</h3>
+                        </div>
+                        <span className="ws7-score-pill">Skor {analysis.recommendation ? Math.round(analysis.recommendation.result.score) : Math.round(analysis.baseline.score)}/100</span>
+                      </div>
+                      <div className="ws7-score-section">
+                        <span className="ws7-score-label">Skor Keseluruhan</span>
+                        <div className="ws7-score-row">
+                          <strong className="ws7-score-number">{analysis.recommendation ? Math.round(analysis.recommendation.result.score) : Math.round(analysis.baseline.score)}/100</strong>
+                          <span className="ws7-status-badge">{scoreLabel(analysis.recommendation ? analysis.recommendation.result.score : analysis.baseline.score)}</span>
+                        </div>
+                      </div>
+                      <div className="ws7-ai-box">
+                        <h4>AI Insight</h4>
+                        <p>{analysis.recommendation ? `Pergeseran koridor sebesar ${analysis.recommendation.distance_meters} m ke arah ${directionLabel[analysis.recommendation.direction]} meningkatkan skor sebesar +${analysis.recommendation.score_delta} poin.` : "Pilih alternatif untuk melihat perbandingan skor dan efisiensi rute."}</p>
+                      </div>
                     </article>
                   </div>
-                  <section className="comparison-section">
-                    <p className="panel-kicker">DELTA METRIK</p>
-                    <h3>Baseline vs Rekomendasi</h3>
-                    <table className="compact-table">
-                      <thead>
-                        <tr>
-                          <th>Metrik</th>
-                          <th>Baseline</th>
-                          <th>Rekomendasi</th>
-                          <th>Delta</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          { label: "Skor", base: analysis.baseline.score, rec: analysis.recommendation.result.score, unit: "", fmt: (v: number) => Math.round(v).toString() },
-                          { label: "Populasi", base: analysis.baseline.population_covered, rec: analysis.recommendation.result.population_covered, unit: "jiwa", fmt: (v: number) => v.toLocaleString("id-ID") },
-                          { label: "Overlap", base: analysis.baseline.overlap_pct, rec: analysis.recommendation.result.overlap_pct, unit: "%", fmt: (v: number) => `${v}%` },
-                          { label: "Panjang", base: analysis.baseline.route_length_km, rec: analysis.recommendation.result.route_length_km, unit: "km", fmt: (v: number) => `${v.toLocaleString("id-ID")} km` },
-                          { label: "Fasilitas", base: analysis.baseline.facility_count, rec: analysis.recommendation.result.facility_count, unit: "", fmt: (v: number) => v.toLocaleString("id-ID") },
-                        ].map(({ label, base, rec, unit, fmt }) => {
-                          const delta = rec - base;
-                          const improvement = label === "Overlap" ? delta <= 0 : delta >= 0;
-                          return (
-                            <tr key={label}>
-                              <td>{label}</td>
-                              <td>{fmt(base)}</td>
-                              <td>{fmt(rec)}</td>
-                              <td className={improvement ? "delta-pos" : "delta-neg"}>
-                                {delta > 0 ? "+" : ""}{delta.toLocaleString("id-ID", { maximumFractionDigits: 2 })}{unit ? ` ${unit}` : ""}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </section>
+
+                  {analysis.recommendation && (
+                    <section className="comparison-section mt-8">
+                      <p className="panel-kicker">TABEL PERBANDINGAN METRIK</p>
+                      <h3>Skenario A vs Rekomendasi</h3>
+                      <table className="compact-table">
+                        <thead>
+                          <tr>
+                            <th>Metrik</th>
+                            <th>Skenario A</th>
+                            <th>Rekomendasi</th>
+                            <th>Delta</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            { label: "Skor", base: analysis.baseline.score, rec: analysis.recommendation.result.score, unit: "", fmt: (v: number) => Math.round(v).toString() },
+                            { label: "Populasi", base: analysis.baseline.population_covered, rec: analysis.recommendation.result.population_covered, unit: "jiwa", fmt: (v: number) => v.toLocaleString("id-ID") },
+                            { label: "Overlap", base: analysis.baseline.overlap_pct, rec: analysis.recommendation.result.overlap_pct, unit: "%", fmt: (v: number) => `${v}%` },
+                            { label: "Panjang", base: analysis.baseline.route_length_km, rec: analysis.recommendation.result.route_length_km, unit: "km", fmt: (v: number) => `${v.toLocaleString("id-ID")} km` },
+                            { label: "Fasilitas", base: analysis.baseline.facility_count, rec: analysis.recommendation.result.facility_count, unit: "", fmt: (v: number) => v.toLocaleString("id-ID") },
+                          ].map(({ label, base, rec, unit, fmt }) => {
+                            const delta = rec - base;
+                            const improvement = label === "Overlap" ? delta <= 0 : delta >= 0;
+                            return (
+                              <tr key={label}>
+                                <td>{label}</td>
+                                <td>{fmt(base)}</td>
+                                <td>{fmt(rec)}</td>
+                                <td className={improvement ? "delta-pos" : "delta-neg"}>
+                                  {delta > 0 ? "+" : ""}{delta.toLocaleString("id-ID", { maximumFractionDigits: 2 })}{unit ? ` ${unit}` : ""}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </section>
+                  )}
                 </div>
               ) : (
                 <div className="empty-result">
                   <div className="empty-icon"><Image src="/dashboard/logo-icon.png" alt="" width={251} height={250} /></div>
                   <p className="panel-kicker">PERBANDINGAN RUTE</p>
                   <h2>Belum ada perbandingan.</h2>
-                  <p>Evaluasi rute terlebih dahulu untuk membandingkan baseline dengan rekomendasi.</p>
+                  <p>Evaluasi rute terlebih dahulu untuk membandingkan skenario dengan rekomendasi.</p>
                 </div>
               )}
             </div>
           )}
 
           {activeTab === "laporan" && (
-            <div className="ws2-panel">
+            <div className="ws2-panel ws-tab-laporan-content">
               {analysis ? (
                 <div className="ws2-report">
                   <div className="result-heading">
                     <div>
-                      <p className="panel-kicker">LAPORAN ANALISIS</p>
-                      <h2>{activeScenario.name}</h2>
-                      <p className="result-method">Pengembangan Feeder YIA 2026 · Wates</p>
+                      <p className="panel-kicker">LAPORAN EVALUASI TRANSIT</p>
+                      <h2>Pengembangan Feeder YIA 2026</h2>
+                      <p className="result-method">Skenario {activeScenario.name} · Wates – YIA</p>
                     </div>
                     <span className="score-status"><i /> {scoreLabel(analysis.baseline.score)}</span>
                   </div>
+
                   <div className="ws2-report-summary">
-                    <span><b>{Math.round(analysis.baseline.score)}/100</b> skor aksesibilitas</span>
+                    <span><b>{Math.round(analysis.baseline.score)}/100</b> skor keseluruhan</span>
                     <span><b>{analysis.baseline.route_length_km.toLocaleString("id-ID")} km</b> panjang rute</span>
-                    <span><b>{analysis.baseline.population_covered.toLocaleString("id-ID")}</b> warga terjangkau</span>
+                    <span><b>{analysis.baseline.population_covered.toLocaleString("id-ID")}</b> populasi terjangkau</span>
                     <span><b>{analysis.baseline.facility_count}</b> fasilitas publik</span>
                   </div>
+
+                  {/* Subview Data List: Property vs Halte */}
+                  {reportSubTab === "property" ? (
+                    <section className="ws2-report-section">
+                      <p className="panel-kicker">DATA PROPERTY DALAM JANGKAUAN (DESKTOP - 9)</p>
+                      <div className="ws9-property-grid">
+                        {propertyList.map((item, i) => {
+                          const p = item.properties as Record<string, unknown>;
+                          return (
+                            <div key={i} className="ws9-property-card">
+                              <div className="ws9-prop-icon"><MapPin size={18} /></div>
+                              <div>
+                                <strong>{String(p.label || p.name || `Property ${i+1}`)}</strong>
+                                <p>{String(p.kategori || "Komersial")} · {String(p.jenis || "Sewa")}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ) : (
+                    <section className="ws2-report-section">
+                      <p className="panel-kicker">DATA TITIK HALTE KORIDOR (DESKTOP - 10)</p>
+                      <div className="ws10-halte-grid">
+                        {stopsList.map((item, i) => (
+                          <div key={i} className="ws10-halte-card">
+                            <div className="ws10-halte-icon"><RouteIcon size={18} /></div>
+                            <div>
+                              <strong>{item.name}</strong>
+                              <p>{item.dist} · Status: {item.status}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
                   {analysis.baseline.facilities_by_type.length > 0 && (
                     <section className="ws2-report-section">
                       <p className="panel-kicker">FASILITAS TERJANGKAU</p>
@@ -1084,18 +1284,10 @@ export default function Workspace() {
                       </div>
                     </section>
                   )}
-                  <section className="ws2-report-section">
-                    <p className="panel-kicker">PROPERTY & HALTE</p>
-                    <ul className="ws2-report-list">
-                      <li><span>Property GO dalam jangkauan</span><b>{analysis.baseline.property_go_count}</b></li>
-                      <li><span>Halte analisis</span><b>{analysis.baseline.stop_count}</b></li>
-                      <li><span>Populasi per kilometer</span><b>{Math.round(analysis.baseline.population_per_km).toLocaleString("id-ID")}</b></li>
-                      <li><span>Overlap rute existing</span><b>{analysis.baseline.overlap_pct}%</b></li>
-                    </ul>
-                  </section>
+
                   {analysis.baseline.population_by_area.length > 0 && (
                     <section className="ws2-report-section">
-                      <p className="panel-kicker">CAKUPAN PER WILAYAH</p>
+                      <p className="panel-kicker">CAKUPAN PER WILAYAH KECAMATAN</p>
                       <ul className="area-list">
                         {analysis.baseline.population_by_area.map((area) => (
                           <li key={area.admin_name}>
@@ -1109,16 +1301,17 @@ export default function Workspace() {
                       </ul>
                     </section>
                   )}
-                  <div className="action-row">
-                    <button className="secondary-action" onClick={() => setShowExport(true)}><Download size={14} /> Ekspor Report</button>
+
+                  <div className="action-row mt-6">
+                    <button className="secondary-action" onClick={() => setShowExport(true)}><Download size={14} /> Ekspor Report Lengkap</button>
                   </div>
                 </div>
               ) : (
                 <div className="empty-result">
                   <div className="empty-icon"><Image src="/dashboard/logo-icon.png" alt="" width={251} height={250} /></div>
                   <p className="panel-kicker">LAPORAN</p>
-                  <h2>Belum ada laporan.</h2>
-                  <p>Evaluasi rute terlebih dahulu untuk menyusun laporan analisis.</p>
+                  <h2>Belum ada laporan evaluasi.</h2>
+                  <p>Evaluasi rute terlebih dahulu untuk menyusun laporan analisis terstruktur.</p>
                 </div>
               )}
             </div>

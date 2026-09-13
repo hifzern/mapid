@@ -4,10 +4,38 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 const steps = [
-  { side: "left", gif: "/landing/step-1.gif", alt: "Mengaktifkan layer analisis di workspace" },
-  { side: "right", gif: "/landing/step-2.gif", alt: "Menggambar rute dan mencocokkannya ke jaringan jalan" },
-  { side: "left", gif: "/landing/step-3.gif", alt: "Menghitung skor aksesibilitas dan membaca hasil evaluasi" },
-  { side: "right", gif: "/landing/step-4.gif", alt: "Membandingkan baseline dengan rute rekomendasi" },
+  {
+    stepNumber: "01",
+    side: "left",
+    gif: "/landing/step-1.gif",
+    alt: "Mengaktifkan layer analisis spasial di workspace",
+    title: "Eksplorasi Layer Wilayah",
+    description: "Aktifkan data spasial kepadatan penduduk BPS, batas administrasi kecamatan, jaringan rute eksisting, dan sebaran fasilitas publik untuk memahami konteks wilayah Kulon Progo.",
+  },
+  {
+    stepNumber: "02",
+    side: "right",
+    gif: "/landing/step-2.gif",
+    alt: "Menggambar rute dan mencocokkannya ke jaringan jalan",
+    title: "Gambar & Sesuaikan Rute",
+    description: "Tarik koridor baru di peta interaktif, sesuaikan titik belok rute, atau gunakan fitur ikuti jalan (road snap) berbasis jaringan jalan OSRM secara otomatis.",
+  },
+  {
+    stepNumber: "03",
+    side: "left",
+    gif: "/landing/step-3.gif",
+    alt: "Menghitung skor aksesibilitas dan membaca hasil evaluasi",
+    title: "Evaluasi Metrik & AI Insight",
+    description: "Dapatkan skor komposit instan (0–100), estimasi populasi terjangkau (buffer 500m / isochrone), deteksi konflik rute, dan narasi analisis perencanaan terverifikasi AI.",
+  },
+  {
+    stepNumber: "04",
+    side: "right",
+    gif: "/landing/step-4.gif",
+    alt: "Membandingkan baseline dengan rute rekomendasi",
+    title: "Bandingkan Alternatif Skenario",
+    description: "Bandingkan performa Skenario A vs Skenario B secara berdampingan dengan perbandingan metrik delta untuk memilih rute paling efektif sebelum diajukan ke publik.",
+  },
 ] as const;
 
 export default function RouteJourney() {
@@ -122,8 +150,9 @@ export default function RouteJourney() {
               <Image src={step.gif} alt={step.alt} width={589} height={315} unoptimized priority={index < 2} />
             </div>
             <div className="tr-step-copy">
-              <h3>Uji Ide Rute<br />Secara Bertahap</h3>
-              <p>Evaluasi ide koridor transportasi publik di Kabupaten Kulon Progo dengan konteks spasial, metrik transparan, dan rekomendasi yang dapat ditelusuri.</p>
+              <span className="tr-step-badge">LANGKAH {step.stepNumber}</span>
+              <h3>{step.title}</h3>
+              <p>{step.description}</p>
             </div>
           </article>
         ))}

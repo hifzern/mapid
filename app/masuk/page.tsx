@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Lock, Mail, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Lock, Mail } from "lucide-react";
 
 export default function MasukPage() {
   const router = useRouter();
@@ -16,37 +15,49 @@ export default function MasukPage() {
   return (
     <main className="login-page">
       <section className="login-brand">
-        <Link href="/" className="login-back" aria-label="Kembali ke beranda">
-          <ArrowLeft size={16} /> Beranda
-        </Link>
+        <div className="login-brand-top">
+          <Link href="/" className="login-back" aria-label="Kembali ke beranda">
+            <ArrowLeft size={16} /> Beranda
+          </Link>
+        </div>
+
         <div className="login-brand-body">
-          <Image
-            src="/brand/transight-logo-light.png"
-            alt="Transight"
-            width={1200}
-            height={330}
-            className="login-logo"
-            priority
-          />
-          <p>
-            Masuk ke ruang kerja perencanaan transit. Simulasikan rute, aktifkan layer spasial,
+          <h1 className="login-hero-title">
+            Masuk ke Dasbor perencanaan transit.
+          </h1>
+          <p className="login-hero-sub">
+            Simulasikan rute, aktifkan layer spasial, jalankan analisis mock,<br className="hidden md:inline" />
             dan siapkan rekomendasi untuk stakeholder kota.
           </p>
-          <span className="login-mock-badge"><Sparkles size={14} /> Mode Demo</span>
+
+          <div className="login-stats-grid">
+            <div className="login-stat-pill">
+              <span className="login-stat-kicker">LAYER</span>
+              <strong className="login-stat-value">6 data</strong>
+            </div>
+            <div className="login-stat-pill">
+              <span className="login-stat-kicker">BUFFER</span>
+              <strong className="login-stat-value">500 m</strong>
+            </div>
+            <div className="login-stat-pill">
+              <span className="login-stat-kicker">MODE</span>
+              <strong className="login-stat-value">Mock</strong>
+            </div>
+          </div>
         </div>
       </section>
 
       <section className="login-form-panel">
         <div className="login-form-shell">
-          <p className="login-eyebrow">Masuk</p>
-          <h1 className="login-title">Masuk ke Dasbor perencanaan transit.</h1>
-          <p className="login-subtitle">
-            Gunakan form ini untuk masuk ke prototype. Autentikasi nyata belum diaktifkan.
+          <h2 className="login-form-title">Masuk</h2>
+          <p className="login-form-sub">
+            Gunakan form ini untuk masuk ke prototype.<br />
+            Autentikasi nyata belum diaktifkan.
           </p>
 
           <form className="login-form" onSubmit={submit}>
             <label className="login-field">
-              <span>Email</span>
+              <span className="login-field-label">Email</span>
               <div className="login-input">
                 <Mail size={16} />
                 <input
@@ -58,19 +69,30 @@ export default function MasukPage() {
                 />
               </div>
             </label>
+
             <label className="login-field">
-              <span>Password</span>
+              <span className="login-field-label">Password</span>
               <div className="login-input">
                 <Lock size={16} />
-                <input type="password" name="password" placeholder="••••••••" required />
+                <input type="password" name="password" placeholder="•••••••••" required />
               </div>
             </label>
+
+            <div className="login-options-row">
+              <label className="login-remember">
+                <input type="checkbox" name="remember" defaultChecked />
+                <span>Ingat saya</span>
+              </label>
+              <a href="#" className="login-forgot" onClick={(e) => e.preventDefault()}>Lupa password?</a>
+            </div>
+
             <button type="submit" className="login-submit">
               Masuk ke Dasbor <ArrowRight size={16} />
             </button>
+
             <label className="login-terms">
               <input type="checkbox" name="terms" defaultChecked required />
-              <span>Accept term condition</span>
+              <span><Check size={14} className="inline text-teal-600 mr-1" />Accept term condition</span>
             </label>
           </form>
 
